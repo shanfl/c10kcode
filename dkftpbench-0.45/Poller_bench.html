@@ -1,0 +1,417 @@
+<html>
+<head>
+<title>Microbenchmark comparing poll, kqueue, and /dev/poll - 24 Oct 2000</title>
+</head>
+<body>
+<h1>Microbenchmark comparing poll, kqueue, and /dev/poll - 24 Oct 2000</h1>
+
+<ul>
+<li><a href="#goal">Goal</a>
+<li><a href="#desc">Description</a>
+<li><a href="#setup.linux">Setup - Linux</a>
+<li><a href="#setup.solaris">Setup - Solaris</a>
+<li><a href="#procedure">Procedure</a>
+<li><a href="#results">Results</a>
+<li><a href="#discussion">Discussion</a>
+<li><a href="#profiling">Results - kernel profiling</a>
+<li><a href="#lmbench">lmbench results</a>
+</ul>
+
+<h2><a name="goal">Goal</a></h2>
+Various mechanisms of handling multiple sockets with a single server
+thread are available; not all mechanisms are available on all platforms.
+A C++ class, Poller, has been written which abstracts these mechanisms into a
+common interface, and should provide both high performance and portability.
+This microbenchmark compares the performance of select(), poll(), kqueue(), and /dev/poll
+using Poller on Solaris 7, Linux 2.2.14, Linux 2.4.0-test10-pre4, and FreeBSD 4.x-STABLE.
+<p>
+Note that this is a synthetic microbenchmark, not a real world benchmark.
+In the real world, other effects often swamp the kinds of things
+measured here.
+
+<h2><a name="desc">Description</a></h2>
+
+Poller and Poller_bench are GPL'd software; you can
+<a href="../dkftpbench/">download the source</a> 
+or <a href="doc/Poller.html">view the doc online</a>.
+
+<p>
+Poller_bench sets up an array of socketpairs, has a Poller monitor
+the read end of each socketpair, and measures how long it takes to execute
+the following snippet of code with various styles of Poller:
+<pre>
+    for (k=0; k&lt;num_active; k++)
+        write(fdpairs[k * spacing + spacing/2][1], "a", 1);
+    poller.waitAndDispatchEvents(0);
+</pre>
+where spacing = num_pipes / num_active.
+<p>
+<code>poller.waitAndDispatchEvents()</code> calls 
+<code>poll()</code> or 
+<code>ioctl(m_dpfd, DP_POLL, &amp;dopoll)</code>,
+as appropriate, then calls an event handler for each ready socket.
+<p>
+The event handler for this benchmark just executes
+<pre>
+    read(event->fd, buf, 1);
+</pre>
+
+
+<h2><a name="setup.linux">Setup - Linux</a></h2>
+
+<ul>
+<li>Download the /dev/poll patch from
+<a href="http://www.citi.umich.edu/projects/linux-scalability/patches/">http://www.citi.umich.edu/projects/linux-scalability/patches/</a>.
+Be careful to get the right version for your kernel; not all kernels are supported.
+I used vanilla kernel 2.2.14.
+<li>Apply the patch, configure your kernel to enable /dev/poll support
+(with 'make menuconfig'), and rebuild the kernel.
+<li>Create an entry in /dev for the /dev/poll driver with
+<pre>cd /dev
+mknod poll u 15 125
+chmod 666 /dev/poll
+</pre>
+where 15 is MISC_MAJOR and 125 is DEVPOLL_MINOR from the kernel sources;
+your MISC_MAJOR may differ, be sure to check 
+/usr/src/linux/include/linux/major.h for the definition of MISC_MAJOR on your system.
+<li>Create a symbolic link so the benchmark (which includes usr/include/sys/devpoll.h)
+can be compiled:
+<pre>cd /usr/include/asm
+ln -s ../linux/devpoll.h</pre>
+</ul>
+
+<h2><a name="setup.solaris">Setup - Solaris</a></h2>
+
+On Solaris 7, you may need to install a patch to get /dev/poll
+(or at least to get it to work properly); it's standard in Solaris 8.
+See also <a href="http://www.kegel.com/c10k.html#nb./dev/poll">my notes on /dev/poll</a>.
+<p>
+Also, a line near the end of /usr/include/sys/poll_impl.h
+may need to be moved to get it to compile when included from C++ programs.
+
+<h2><a name="procedure">Procedure</a></h2>
+Download the dkftpbench source tarball from
+<a href="http://www.kegel.com/dkftpbench/">
+http://www.kegel.com/dkftpbench/</a> and unpack.
+
+<p>
+On Linux, if you want kernel profile results, boot with argument
+'profile=2' to enable the kernel's builtin profiler.
+<p>
+Run the shell script Poller_bench.sh as follows:
+<pre>
+  su
+  sh Poller_bench.sh
+</pre>
+<p>
+The script raises file descriptor limits, then runs the command
+<pre>
+	./Poller_bench 5 1 spd 100 1000 10000 
+</pre>
+<p>
+It should be run on an idle machine, with no email client,
+web browser, or X server running.  The Pentium III machine
+at my disposal was running a single sshd; the Solaris machine
+was running two sshd's and an idle XWindow server, so it wasn't quite as idle.
+
+<h2><a name="results">Results</a></h2>
+With 1 active socket amongst 100, 1000, or 10000 total sockets,
+waitAndDispatchEvents takes the following amount of wall-clock time, in microseconds
+(lower is faster):
+<p>
+On a 167MHz sun4u Sparc Ultra-1 running SunOS 5.7 (Solaris 7) Generic_106541-11:
+<b>
+<pre>
+     pipes    100    1000   10000
+    select    151       -       -
+      poll    470     676    3742
+ /dev/poll     61      70      92
+165133 microseconds to open each of 10000 socketpairs
+29646 microseconds to close each of 10000 socketpairs   
+</pre>
+</b>
+<p>
+On a 4X400Mhz Enterprise 450 running Solaris 8 (results contributed by Doug Lea):
+<b>
+<pre>
+     pipes    100    1000   10000 
+    select     60       -       - 
+      poll    273     388    1559 
+ /dev/poll     27      28      34 
+116586 microseconds to open each of 10000 socketpairs
+19235 microseconds to close each of 10000 socketpairs
+</pre>
+</b>
+(The machine wasn't idle, but at most one CPU was doing other stuff
+during test, and the test seemed to occupy only one CPU.)
+<p>
+On an idle 650 MHz dual Pentium III running Red Hat Linux 6.2
+with kernel 2.2.14smp plus the /dev/poll patch plus <a href="close.patch">Dave Miller's
+patch to speed up close()</a>:
+<b>
+<pre>
+     pipes    100    1000   10000 
+    select     28       -       - 
+      poll     23     890   11333 
+ /dev/poll     19     146    4264 
+</pre>
+</b>
+(Time to open or close socketpairs was not recorded, but was under 14 microseconds.)
+<p>
+On the same machine as above, but with kernel 2.4.0-test10-pre4 smp:
+<b>
+<pre>
+     pipes    100    1000   10000 
+    select     52       -       - 
+      poll     49    1184   14660 
+26 microseconds to open each of 10000 socketpairs
+14 microseconds to close each of 10000 socketpairs
+</pre>
+</b>
+(Note: the /dev/poll patch does not apply cleanly to recent 2.4.0-test kernels, I believe,
+and I did not try it.)
+
+<p>
+On a single processor 600Mhz Pentium-III with 512MB of memory, running FreeBSD 4.x-STABLE
+(results contributed by <a href="http://www.freebsd.org/~jlemon">Jonathan Lemon</a>):
+<b>
+<pre>
+     pipes    100    1000    10000   30000
+    select     54       -        -       -
+      poll     50     552    11559   35178
+    kqueue      8       8        8       8
+</pre>
+</b>
+
+(Note: Jonathan also varied the number of <i>active</i>
+pipes, and found that kqueue's time scaled linearly with
+that number, whereas poll's time scaled linearly with
+number of <i>total</i> pipes.)
+
+<p>
+The test was also run with pipes instead of socketpairs (results not shown);
+the performance on Solaris was about the same, but the /dev/poll driver
+on Linux did not perform well with pipes.  According to Niels Provos,
+<blockquote><i>
+The hinting code which causes a considerable speed up for /dev/poll only
+applies to network sockets.  If there are any serious applications that
+make uses of pipes in a manner that would benefit from /dev/poll then
+the pipe code needs to return hints too.
+</i></blockquote>
+
+<h2><a name="discussion">Discussion</a></h2>
+<h3>Miscellany</h3>
+Running the benchmark was painfully slow on Solaris 7 because 
+the time to create or close socketpairs was outrageous.  
+Likewise, on unpatched 2.2.14, the time to close
+socketpairs was outrageous, but the recent patch from Dave Miller
+fixes that nicely.
+<p>
+2.4.0-test10-pre4 was slower than 2.2.14 in all cases tested.
+<p>
+I should show results for pipes as well as socketpairs.
+<p>
+The Linux 2.2.14 /dev/poll driver printed messages to the console
+when sockets were closed; this should probably be disabled for production.
+
+<h3>kqueue()</h3>
+It looks offhand like kqueue() performs best of all the tested methods.
+It's even faster than, and scales better than, /dev/poll, at least 
+in this microbenchmark.
+
+<h3>/dev/poll vs. poll</h3>
+In all cases tested involving sockets, /dev/poll was appreciably faster than poll().
+<p>
+The 2.2.14 Linux /dev/poll driver was about six times faster than poll()
+for 1000 fds, but fell down to only 2.7 times faster at 10000 fds.
+The Solaris /dev/poll driver was about seven times faster than poll() at
+100 fds, and increased to 40 times faster at 10000 fds.
+
+<h3>Scalability of poll() and /dev/poll</h3>
+Under Solaris 7, when the number of idle sockets was increased from 100 to 10000,
+the time to check for active sockets with poll() and /dev/poll increased by a factor 
+of only 6.5 (good) and 1.5 (fantastic), respectively.  
+<p>
+Under Linux 2.2.14, when the number of idle sockets was increased from 100 to 10000,
+the time to check for active sockets with poll() and /dev/poll increased by a factor 
+of 493 and 224, respectively.  This is terribly, horribly bad scaling behavior.
+<p>
+Under Linux 2.4.0-test10-pre4, when the number of idle sockets was increased from 100 to 10000,
+the time to check for active sockets with poll() increased by a factor 
+of 300.  This is terribly, horribly bad scaling behavior.
+<p>
+There seems to be a scalability problem in poll() under both Linux 2.2.14 and 2.4.0-test10-pre4
+and in /dev/poll under Linux 2.2.14.  
+<p>
+poll() is stuck with an interface that dictates O(n) behavior on total pipes;
+still, Linux's implementation could be improved.
+The design of the current Linux /dev/poll patch is O(n) in total pipes, 
+in spite of the fact that its interface allows it to be O(1) in total pipes
+and O(n) only in <i>active</i> pipes.
+<p>
+See also the 
+<a href="http://boudicca.tux.org/hypermail/linux-kernel/2000week44/index.html#9">recent discussions on linux-kernel</a>.
+
+<h2><a name="profiling">Results - kernel profiling</a></h2>
+To look for the scalability problem, I added support to the
+benchmark to trigger the Linux kernel profiler.  A few results
+are shown below.  (No smoking gun was found, but then, I wouldn't
+know a smoking gun if it hit me in the face.  Perhaps real kernel
+hackers can pick up the hunt from here.)
+<p>
+If you run the above test on a Linux system booted with 'profile=2',
+Poller_bench will output one kernel profiling data file per test condition.
+Poller_bench.sh does a gross analysis using 'readprofile | sort -rn | head > bench%d%c.top'
+to find the kernel functions with the highest CPU usage,
+where %d is the number of socketpairs, and %c is p for poll, d for /dev/poll, etc.
+<p>
+'more bench10000*.top' shows the results for 10000 socketpairs.
+On 2.2.14, it shows:
+<pre>
+::::::::::::::
+bench10000d.dat.top
+::::::::::::::
+   901 total                                      0.0008
+   833 dp_poll                                    1.4875
+    27 do_bottom_half                             0.1688
+     7 __get_request_wait                         0.0139
+     4 startup_32                                 0.0244
+     3 unix_poll                                  0.0203
+::::::::::::::
+bench10000p.dat.top
+::::::::::::::
+   584 total                                      0.0005
+   236 unix_poll                                  1.5946
+   162 sock_poll                                  4.5000
+   148 do_poll                                    0.6727
+    24 sys_poll                                   0.0659
+     7 __generic_copy_from_user                   0.1167
+</pre>
+This seems to indicate that /dev/poll spends nearly all of its time in dp_poll(),
+and poll spends a fair bit of time in three routines: unix_poll, sock_poll, and do_poll.
+<p>
+On 2.4.0-test10-pre4 smp, 'more bench10000*.top' shows:
+
+<pre>
+::::::::::::::
+2.4/bench10000p.dat.top
+::::::::::::::
+  1507 total                                      0.0011
+   748 default_idle                              14.3846
+   253 unix_poll                                  1.9167
+   209 fget                                       2.4881
+   195 sock_poll                                  5.4167
+    29 sys_poll                                   0.0342
+    29 fput                                       0.1272
+    29 do_pollfd                                  0.1648
+</pre>
+
+It seems curious that the idle routine should show up so much,
+but it's probably just the second CPU doing nothing.
+
+<p>
+Poller_bench.sh will also try to do a fine analysis of dp_poll() using 
+the 'profile' tool (source included), which is a variant of readprofile 
+that shows hotspots within kernel functions.  Looking at its output for
+the run on 2.2.14, the three four-byte regions that take up the most
+CPU time in dp_poll() in the 10000 socketpair case are
+<pre>
+   c01d9158  39.135654%           326
+   c01d9174  11.404561%            95
+   c01d91a0  27.250900%           227
+</pre>
+Looking at the output of 'objdump -d /usr/src/linux/vmlinux', that
+region corresponds to the object code:
+<pre>
+c01d9158:	c7 44 24 14 00 00 00 	movl   $0x0,0x14(%esp,1)
+c01d915f:	00 
+c01d9160:	8b 74 24 24          	mov    0x24(%esp,1),%esi
+c01d9164:	8b 86 8c 04 00 00    	mov    0x48c(%esi),%eax
+c01d916a:	3b 50 04             	cmp    0x4(%eax),%edx
+c01d916d:	73 0a                	jae    c01d9179 <dp_poll+0xc5>
+c01d916f:	8b 40 10             	mov    0x10(%eax),%eax
+c01d9172:	8b 14 90             	mov    (%eax,%edx,4),%edx
+c01d9175:	89 54 24 14          	mov    %edx,0x14(%esp,1)
+c01d9179:	83 7c 24 14 00       	cmpl   $0x0,0x14(%esp,1)
+c01d917e:	75 12                	jne    c01d9192 <dp_poll+0xde>
+c01d9180:	53                   	push   %ebx
+c01d9181:	ff 74 24 3c          	pushl  0x3c(%esp,1)
+c01d9185:	e8 5a fc ff ff       	call   c01d8de4 <dp_delete>
+c01d918a:	83 c4 08             	add    $0x8,%esp
+c01d918d:	e9 d1 00 00 00       	jmp    c01d9263 <dp_poll+0x1af>
+c01d9192:	8b 7c 24 10          	mov    0x10(%esp,1),%edi
+c01d9196:	0f bf 4f 06          	movswl 0x6(%edi),%ecx
+c01d919a:	31 c0                	xor    %eax,%eax
+c01d919c:	f0 0f b3 43 10       	lock btr %eax,0x10(%ebx)
+c01d91a1:	19 c0                	sbb    %eax,%eax
+</pre>
+I'm not yet familiar enough with kernel hacker tools to associate those
+with lines of code in /usr/src/linux/drivers/char/devpoll.c, but
+that 'lock btr' hotspot appears to be the call to test_and_clear_bit().
+
+<h2><a name="lmbench">lmbench results</a></h2>
+lmbench results are presented here to help people trying to compare
+the Intel and Sparc parts of the results shown above.
+<p>
+The source used was lmbench-2alpha10 from bitmover.com.
+I did not check into why the TCP test failed on the linux box.
+
+<pre>
+                 L M B E N C H  1 . 9   S U M M A R Y
+                 ------------------------------------
+                 (Alpha software, do not distribute)
+ 
+Processor, Processes - times in microseconds - smaller is better
+----------------------------------------------------------------
+Host                 OS  Mhz null null      open selct sig  sig  fork exec sh
+                             call  I/O stat clos       inst hndl proc proc proc
+--------- ------------- ---- ---- ---- ---- ---- ----- ---- ---- ---- ---- ----
+sparc-sun     SunOS 5.7  167  2.9  12.   48   55 0.40K  6.6   81 3.8K  15K  32K
+i686-linu Linux 2.2.14d  651  0.5  0.8    4    5 0.03K  1.4    2 0.3K   1K   6K
+ 
+Context switching - times in microseconds - smaller is better
+-------------------------------------------------------------
+Host                 OS 2p/0K 2p/16K 2p/64K 8p/16K 8p/64K 16p/16K 16p/64K
+                        ctxsw  ctxsw  ctxsw ctxsw  ctxsw   ctxsw   ctxsw
+--------- ------------- ----- ------ ------ ------ ------ ------- -------
+sparc-sun     SunOS 5.7   19     69    235   114    349     116     367
+i686-linu Linux 2.2.14d    1      5     17     5    129      30     129
+ 
+*Local* Communication latencies in microseconds - smaller is better
+-------------------------------------------------------------------
+Host                 OS 2p/0K  Pipe AF     UDP  RPC/   TCP  RPC/ TCP
+                        ctxsw       UNIX         UDP         TCP conn
+--------- ------------- ----- ----- ---- ----- ----- ----- ----- ----
+sparc-sun     SunOS 5.7    19    60  120   197         215       1148
+i686-linu Linux 2.2.14d     1     7   13    31          80           
+ 
+File & VM system latencies in microseconds - smaller is better
+--------------------------------------------------------------
+Host                 OS   0K File      10K File      Mmap    Prot    Page
+                        Create Delete Create Delete  Latency Fault   Fault
+--------- ------------- ------ ------ ------ ------  ------- -----   -----
+sparc-sun     SunOS 5.7                                 6605    15    5.2K
+i686-linu Linux 2.2.14d     10      0     19      1     5968     1    0.5K
+ 
+*Local* Communication bandwidths in MB/s - bigger is better
+-----------------------------------------------------------
+Host                OS  Pipe AF    TCP  File   Mmap  Bcopy  Bcopy  Mem   Mem
+                             UNIX      reread reread (libc) (hand) read write
+--------- ------------- ---- ---- ---- ------ ------ ------ ------ ---- -----
+sparc-sun     SunOS 5.7   60   55   54     84    122    177     89  122   141
+i686-linu Linux 2.2.14d  528  366   -1    357    451    150    138  451   171
+ 
+Memory latencies in nanoseconds - smaller is better
+    (WARNING - may not be correct, check graphs)
+---------------------------------------------------
+Host                 OS   Mhz  L1 $   L2 $    Main mem    Guesses
+--------- -------------   ---  ----   ----    --------    -------
+sparc-sun     SunOS 5.7   167    12     59         273                         
+i686-linu Linux 2.2.14d   651     4     10         131
+</pre>
+
+<hr>
+<i>Dan Kegel</i><br>
+<a href="http://www.kegel.com/">www.kegel.com</a>
+</body>
+</html>

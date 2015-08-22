@@ -1,0 +1,289 @@
+<pre>
+/*--------------------------------------------------------------------------
+ Simple example of object-oriented callbacks using the Java-inspired
+ approach of an "interface", i.e. a pure virtual class with a single
+ member function.
+ Compiles, but doesn't run; some functions are omitted.
+
+ In C, a function which needs to call its caller repeatedly before returning 
+ often takes a callback function pointer and a context pointer as parameters,
+ then calls the callback with the context pointer as an argument.
+ The context pointer is there so the callback function doesn't need to 
+ look at global variables to get at its data.
+
+ You can do the same thing in C++; the calling object can pass a pointer
+ to itself as the context pointer.  Writing in C++, you'd like the
+ function to be a member of some object.  It turns out the nicest way to
+ do this is to ask the caller to inherit from a very small pure 
+ virtual class (an 'interface', in Java terms) and pass you a pointer to it.  
+ Your function uses it as a pointer to the interface, and 
+ just calls the one method it cares about.
+
+ This feels very natural to me -- and I'm a hardnosed C programmer.
+ I think of it as a nice way to express the combination of
+ "function pointer plus context pointer" in a typesafe way.
+ The call is a bit more expensive, since it has to do several memory
+ references to look up the overloaded virtual function, but hey, 
+ this is C++, what's a few CPU cycles between friends.
+
+ This technique is, according to the C++ FAQ author, an expression of
+ the very core of dynamic binding, object-oriented code.
+ See the archived discussion at bottom of this document.
+
+ In Java parlance, this technique is simply called using an Interface.
+ (Java, having stripped out all but the best bits of C++, can use
+ simple names for what's left :-)
+
+ In "Design Patterns" parlance, this technique is called the 
+ "Observer Pattern".  See Amazon's reviews of that book at
+ <a href="http://www.amazon.com/exec/obidos/ASIN/0201633612">http://www.amazon.com/exec/obidos/ASIN/0201633612</a>
+ See the publisher's pages at <a href="http://www.awl.com/patterns/">http://www.awl.com/patterns/</a>
+ and the Patterns home page at <a href="http://hillside.net/patterns/">http://hillside.net/patterns/</a>
+ Brace yourself - people who like "Design Patterns" have a lot to say
+ about the subject.
+
+ Note that templates can sometimes be used to achieve a 
+ similar effect without the runtime overhead of the virtual function lookup.
+ Some people prefer one approach, some prefer the other.
+
+ See also related discussions in newsgroup comp.lang.c++.moderated
+ (e.g. <a href="http://x40.deja.com/getdoc.xp?AN=548596155">http://x40.deja.com/getdoc.xp?AN=548596155</a>)
+ and the C++ FAQ, <a href="http://www.cerfnet.com/~mpcline/c++-faq-lite/">http://www.cerfnet.com/~mpcline/c++-faq-lite/</a>
+
+ Portions copyright Dan Kegel 27 Nov 1999.  Licensed under GPL.
+--------------------------------------------------------------------------*/
+
+#include &lt;ostream.h&gt;
+#include &lt;unistd.h&gt;
+
+/* Library class to accept data from many sockets */
+struct MultiListener {
+    struct SocketReaderInterface {
+        /*------------------------------------------------------------------
+         The operating system has told us that the given socket has data
+         waiting.  The user code must override this pure virtual function
+         with a real implementation that reads from the socket.
+        ------------------------------------------------------------------*/
+        virtual void readFromSocket(int socket) = 0;
+    };
+
+    /*------------------------------------------------------------------
+     Register an object and the socket it wants to listen on.
+    ------------------------------------------------------------------*/
+    void registerObjectAndSocket(SocketReaderInterface *p, int socket)
+    {
+        s_sockets[s_num_sockets].p = p;
+        s_sockets[s_num_sockets++].socket = socket;
+    }
+
+    /*------------------------------------------------------------------
+     Check registered sockets for input, call corresponding object's
+     readFromSocket() method when it's time for that object to read
+     from its socket.
+    ------------------------------------------------------------------*/
+    void pollSockets();     // body not shown
+
+    // The array set by registerObjectAndSockets, and read by pollSockets 
+    static struct {
+        SocketReaderInterface *p;
+        int socket;
+    } s_sockets[100];
+    static int s_num_sockets;
+};
+
+/* Class to watch any number of time servers, and print out what
+ * they send us
+ */
+struct multiTimeListener : public MultiListener::SocketReaderInterface
+{
+    const char *m_hostname;
+    static MultiListener s_multilistener;
+
+    multiTimeListener(const char *hname)
+    {
+        int socket = openSocketToTimeServer(hname);
+        s_multilistener.registerObjectAndSocket(this, socket);
+    }
+
+	// Our implementation of the method specified by SocketReaderInterface
+    void readFromSocket(int socket)
+    {
+        char buf[256];
+        int nread;
+        nread = read(socket, buf, sizeof(buf));
+        buf[nread] = 0;
+
+        cout &lt;&lt; "Server " &lt;&lt; m_hostname &lt;&lt; ", time '" &lt;&lt; buf &lt;&lt; " " &lt;&lt; endl;
+    }
+};
+
+/* Program using the above to print out time from many time servers */
+main(int argc, char **argv)
+{
+    int i;
+    multiTimeListener *mtl[100];
+
+    for (i=1; i&lt;argc && i&lt;100; i++)
+        mtl[i] = new multiTimeListener(argv[i]);
+
+    for (;;) {
+        multiTimeListener::s_multilistener.pollSockets();
+    }
+}
+
+/*--------------------------------------------------------------------------
+ Archived discussion with C++ FAQ author Marshall Cline.
+ Thanks to Marshall for his patience, and permission to repost his comments.
+
+ From: "Dan Kegel" &lt;dank at alumni.caltech.edu&gt;
+ To: &lt;cline at parashift.com&gt;
+ Sent: Saturday, November 27, 1999 8:06 PM
+ Subject: object-oriented callbacks
+
+ Hi!
+ http://www.cerfnet.com/~mpcline/c++-faq-lite/pointers-to-members.html
+ seems like it ought to mention a few more callback techniques.
+
+ One very common in Java is:
+ when you want an object-oriented callback,
+ ask the caller to inherit from a very small pure
+ virtual class (an 'interface', in Java terms)
+ and pass you a pointer to it.
+ See http://www.kegel.com/ftpbench/callbackDemo.cc
+ for an explanation and example.
+
+ Another one is functors (which I don't quite get yet,
+ maybe I'm already doing them).
+ - Dan
+
+ -----------------------------------------------------------------
+ Date: Sun, 28 Nov 1999 13:31:16 -0600
+ From: "Marshall Cline" &lt;cline at parashift.com&gt;
+ To: "Dan Kegel" &lt;dank at alumni.caltech.edu&gt;
+ Subject: Re: object-oriented callbacks
+
+ Callbacks is described in the sections on inheritance.  The OO term is
+ "dynamic binding" but the effect is the same: old code can call new code.
+
+ Re functors, let's start describing a "functionoid."  A functionoid is an
+ object that has one major method.  It's basically the OO extension of a
+ C-like function such as printf().  One would use a functionoid whenever the
+ function has more than one entry point (i.e., more than one "method") and/or
+ needs to maintain state between calls in a thread-safe manner (the C-style
+ approach to maintaining state between calls is to add a local "static"
+ variable to the function, but that is horribly unsafe in a multi-threaded
+ environment).
+
+ A functor is a special case of a functionoid: it is a functionoid whose
+ method is the "function-call operator," operator()().  Since it overloads
+ the function-call operator, code can call its major method using the same
+ syntax they would for a function call.  E.g., if "foo" is a functor, to call
+ the "operator()()" method on the "foo" object one would say "foo()".  The
+ benefit of this is in templates, since then the template can have a template
+ parameter that will be used as a function, and this parameter can be either
+ the name of a function or a functor-object.  There is a performance
+ advantage of it being a functor object since the "operator()()" method can
+ be inlined (whereas if you pass the address of a function it must,
+ necessarily, be non-inlined).
+
+ This is very useful for things like the "comparison" function on sorted
+ containers.  In C, the comparison function is always passed by pointer
+ (e.g., see the signature to "qsort()"), but in C++ the parameter can come in
+ either as a pointer to function OR as the name of a functor-object, and the
+ result is that sorted containers in C++ can be, in some cases, a lot faster
+ (and never slower) than the equivalent in C.
+
+ Since Java has nothing similar to templates, it must use dynamic binding for
+ all this stuff, and dynamic binding of necessity means a function call.
+ Normally not a big deal, but in C++ we want to enable extremely high
+ performance code.  That is, C++ has a "pay for it only if you use it"
+ philosophy, which means the language must never arbitrarily impose any
+ overhead over what the physical machine is capable of performing (of course
+ a programmer may, optionally, use techniques such as dynamic binding that
+ will, in general, impose some overhead in exchange for flexibility or some
+ other "ility", but it's up to the designer and programmer to decide whether
+ they want the benefits (and costs) of such constructs).
+
+ Marshall
+
+ -----------------------------------------------------------------
+ From: "Dan Kegel" &lt;dank at alumni.caltech.edu&gt;
+ To: "Marshall Cline" &lt;cline at parashift.com&gt;
+ Sent: Sunday, November 28, 1999 3:17 PM
+ Subject: Re: object-oriented callbacks
+
+ Thanks for your explanation of functors, it's quite clear.
+ May I quote you in my page?  I already link to your FAQ.
+
+ Is there a name for a pure virtual functionoid that's meant to
+ be an interface specification for a user-defined class,
+ a la Java interfaces?
+
+ Marshall Cline wrote:
+ &gt; Callbacks is described in the sections on inheritance.  The OO term is
+ &gt; "dynamic binding" but the effect is the same: old code can call new
+ &gt; code.
+
+ The pattern I'm describing is a way to have a library function call
+ user code repeatedly.
+ That may simply be old code calling new code, but it's seen from
+ the point of view of a programmer trying to solve a particular problem,
+ which might be more accessable than a full description of dynamic binding.
+
+ Your FAQ-lite doesn't mention any of this stuff, except in the most
+ general terms, AFAICS.  Perhaps you reserve this for your
+ printed FAQ?
+
+ -----------------------------------------------------------------
+ Date: Sun, 28 Nov 1999 18:20:26 -0600
+ From: "Marshall Cline" &lt;cline at parashift.com&gt;
+ To: "Dan Kegel" &lt;dank at alumni.caltech.edu&gt;
+ Subject: Re: object-oriented callbacks
+
+ Yes you can quote me regarding functionoids and functors (I'll probably add
+ that stuff to the FAQ at some point, but in the mean time, feel free to
+ quote me).
+
+ But please don't confuse functors (or functionoids) with interfaces/abstract
+ classes/inheritance/dynamic binding/call backs.  Most functors, for example,
+ have neither base classes nor derived classes - most are stand-alone
+ concrete classes.
+
+ Regarding "having a library function call user code repeatedly," this is a
+ good thing, and it is the essence of object-orientation and dynamic binding.
+ It is, to be sure, a somewhat specific application of OO design, but the
+ underlying approach (of having the user code in a derived class that gets
+ called by existing code that has base class pointers) is the heart and soul
+ of all OO designs.
+
+ In this sense the FAQ actually spends a great deal of time on this general
+ pattern.  In fact, it is not only the core "meta-pattern" of the C++ FAQ, it
+ is also the core meta-pattern that is underneath most of the design patterns
+ in the GOF book.  Put it this way: without that meta-pattern, the concepts
+ of "programming by contract" and "proper inheritance" wouldn't make any
+ sense.
+
+ The point is this: (1) the technique you want to describe is a good
+ technique; and (2) it is thoroughly discussed in the literature (the GOF
+ book, the C++ FAQ (both "lite" and "book" variants), most of the other
+ "design patterns" stuff, and even the Eiffel literature (Bertrand Meyers et
+ al)).
+
+ One more thing: you probably want to check out the section on "proper
+ inheritance."  Since you're using dynamic binding the way it was intended to
+ be used, you must become an evangelist for "proper inheritance."  Work a few
+ examples and you'll immediately see what I'm talking about.  I believe the
+ C++ FAQ lite gives the ostrich/bird example, and perhaps the circle/ellipse
+ example.  If we accept that a major design goal is to NOT have to change the
+ "library code" (the pre-existing code that uses base-class-pointers) every
+ time somebody adds a new derived class, then the value of proper inheritance
+ becomes clear.
+
+ Put it this way: one shouldn't create a derived class to *reuse* the stuff
+ in the base class; one should create a derived class to *be reused* by the
+ code that uses base-class-pointers.  It's a totally opposite way of looking
+ at things - it's "right side up" but most people are "upside down."
+
+ Marshall
+--------------------------------------------------------------------------*/
+</pre>

@@ -1,0 +1,78 @@
+// By Dan Kegel and Leonid Rozenberg
+
+/**----------------------------------------------------------------------
+ An FTP load generator service.
+----------------------------------------------------------------------*/
+interface CorbaPlatoon {
+
+	/**----------------------------------------------------------------------
+	 filename is what file to fetch from the remote server (will be a template
+	 later).
+	 maxBytesPerSec sets how much bandwidth each client tries to use.
+	 minBytesPerSec is the lowest bandwidth per client we accept (else abort).
+	 bytesPerRead sets how many bytes to read each time.
+	 servername and port specify the server and port the user will connect to.
+	 username and passwd are the user's username and password.
+	 useAllLocalInterfaces if true tries to spread out the users across local 
+	 addresses.
+	----------------------------------------------------------------------*/
+	void init( 
+		in string filename, 
+		in unsigned long maxBytesPerSec, 
+		in unsigned long minBytesPerSec, 
+		in unsigned long bytesPerRead, 
+		in string servername, 
+		in unsigned short port, 
+		in string username, 
+		in string passwd, 
+	 	in boolean useAllLocalInterfaces
+	);
+
+	/**----------------------------------------------------------------------
+	 Stops any activity.  After this call, you may call init again.
+	----------------------------------------------------------------------*/
+	void reset();
+
+	/**----------------------------------------------------------------------
+	 Set desired number of simulated users.  Platoon will ramp up to this.
+	----------------------------------------------------------------------*/
+	void set_nuserTarget(in unsigned long utarget);
+
+	/**----------------------------------------------------------------------
+	 How verbose a server log file?
+	 Default is 0.  Higher values make Platoon more verbose.
+	----------------------------------------------------------------------*/
+	void set_verbosity(in short v);
+
+	/**----------------------------------------------------------------------
+	 How many simulated users should try to connect at once?
+	 Default is 1.  Higher values make Platoon ramp up more quickly.
+	----------------------------------------------------------------------*/
+	void set_nconnectingTarget(in unsigned long ctarget);
+
+	/**----------------------------------------------------------------------
+	 Possible choices for how far in connection process to go before
+	 starting the next connection.
+	----------------------------------------------------------------------*/
+	enum sessionState_t {CONNECT_START, CONNECT_FINISH};
+
+	/**----------------------------------------------------------------------
+	 What's the last state in which a robouser is considered to be connecting?
+	 Default value is CONNECT_FINISH (after tcp connection complete).  
+	 Other possible value is CONNECT_START (when tcp connection starts).
+	----------------------------------------------------------------------*/
+	void set_lastConnectingState(in sessionState_t lstate);
+
+	/**----------------------------------------------------------------------
+	 Call this periodically to check on status of the clients.
+	 nconnecting = # of robousers still trying to connect
+	 nalive      = # of robousers who connected ok and are in good shape
+	 ndead       = # of robousers who have failed, and are out of action
+
+	 Returns total number of bytes transferred so far.
+	----------------------------------------------------------------------*/
+	long getStatus(out unsigned long nconnecting, 
+  		       out unsigned long nalive, 
+		       out unsigned long ndead);
+};
+

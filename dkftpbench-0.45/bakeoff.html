@@ -1,0 +1,60 @@
+<html>
+<head>
+<title>Linux FTP Server Performance Bakeoff</title>
+</head>
+<body>
+<h1>Linux FTP Server Performance Bakeoff</h1>
+
+<h2>ftp.cdrom.com: the current champion</h2>
+<i>How</i> does ftp.cdrom.com do it?  Their ftp server is 
+<a href="http://www.cdrom.com/press/wcarchive_milestone.phtml">said to be capable of handling 
+ten thousand simultaneous downloads</a> -- with a 
+<a href="ftp://ftp.cdrom.com/archive-info/configuration">single CPU and network interface</a>.
+<p>
+Their secret?  FreeBSD and a custom ftp server daemon.  It's time
+that Linux and its bevy of ftp servers stood up to this challenge.
+
+<h2>The Bakeoff</h2>
+I plan to compare performance of FTP daemons for Linux in a kind
+of performance bake-off sometime around March 2001.  Each daemon will
+be subjected to a torture test to see how many simultaneous
+dialup downloads it can support.  The results will be posted
+publicly, and I'll send the author of the winning FTP daemon
+a care package of homemade cookies :-)  There will be separate
+categories for free and for commercial FTP daemons, and
+for "Document Tree Smaller than System RAM" and "Document Tree
+Larger than System RAM", so I'll be baking several batches of cookies.
+
+<h2>Mailing List</h2>
+If you're interested in participating, please join 
+<a href="http://onelist.com/community/ftpbench">the mailing list</a>
+and/or pipe up on <a href="news:comp.benchmarks">comp.benchmarks</a>.
+
+<h2>Getting Your Daemon Ready</h2>
+You can get ready for the bakeoff by testing your daemon yourself
+to see how many users it can support, eliminating bottlenecks, lowering
+memory consumption, and posting instructions on your daemon's support 
+page for how to configure it and the OS to support, say, 1000 
+simultaneous users.
+The tests will probably be run with Red Hat Linux 6.2, hopefully
+using the 2.4 kernel.
+<p>
+An early version of the load generator that will be used is
+available now at 
+<a href="index.html">http://www.kegel.com/dkftpbench/</a>
+You can use it now to stress-test your daemon.  The load generator
+will be more interesting by March, but it's usable as is now.
+
+<h2>Preliminary Results</h2>
+<a href="http://www.kegel.com/dkftpbench/results.html">Preliminary results</a>
+with this load generator with a very small document tree
+show ncftpd beating out wu-ftpd and proftpd, and betaftpd whipping them all.
+Betaftpd won't do as well on the large document tree, though, since
+it will slow to a crawl as soon as it has to hit the disk.
+<p>
+<hr>
+<i>
+Last Change July 26th, 2000; copyright Dan Kegel
+</i>
+</body>
+</html>

@@ -1,0 +1,59 @@
+<html>
+<head><title>Class Usage in the FTP Benchmark Code</title></head>
+<body>
+<h1>Class Usage in the FTP Benchmark Code</h1>
+In general, there is no inheritance among the classes, and all
+allocations are static.  (Exceptions to this rule are noted below.)
+<p>
+The benchmark program 'bench' instantiates a bunch of
+ftp_client_pipe_t's using the utility function robouser_t::static_init(),
+which keeps them in the static array roboclient_t::s_users[].
+<ul>
+	<li>bench
+	<ul>
+		<li>Sked
+		<li>robouser_t
+		<ul>
+			<li>static ftp_client_pipe_t &nbsp;&nbsp;s_users[robouser_MAXUSERS];
+			<ul>
+				<li>int m_cfd;  // control socket
+				<li>int m_dfd;  // data socket
+				<li>nbbio &nbsp;&nbsp;m_obuf;
+				<li>nbbio &nbsp;&nbsp;m_ibuf;
+				<li>ftp_client_proto_t &nbsp;&nbsp;m_proto;
+			</ul>
+		</ul>
+	</ul>
+</ul>
+
+In other words, 
+<ul>
+<li><a href="bench.cc">bench</a> instantiates Sked, and uses but doesn't instantiate robouser_t,
+<li><a href="robouser.cc">robouser</a> has an array of ftp_client_pipe_t's,
+<li><a href="ftp_client_pipe.h">ftp_client_pipe_t</a> has two nbbio's, one ftp_client_proto_t,
+and two socket descriptors,
+<li><a href="nbbio.h">nbbio</a> doesn't have any objects in it.
+<li><a href="ftp_client_proto.h">ftp_client_proto_t</a> doesn't have any objects in it.
+</ul>
+The one instance of dynamic memory allocation is the array of
+ftp_client_pipe_t's, roboclient_t::s_users[].  Its elements are
+dynamically created by roboclient_t::static_init().  Note that
+this means just about everything is on the heap, but there's very little
+heap activity - once they're allocated, that's it.
+<p>
+None of the classes has constructors that do very much.  To avoid heap fragmentation,
+the classes stay allocated, and init() and shutdown() methods are used to
+grab resources (e.g. file handles) as needed.
+<p>
+There aren't many pointers to objects; these include roboclient_t::s_users[],
+the pointer to Sked passed to robouser_t::static_init() and used in robouser_t::start(), and
+the pointer to the ftp_client_pipe_datainterface_t passed in to ftp_client_pipe_t::init().
+<p>
+There are two instances of inheritance so far-
+anything that uses ftp_client_pipe_t must inherit from and implement ftp_client_pipe_datainterface_t,
+and anything that uses Sked must inherit from and implement SkedClient,
+That's how the caller is notified that ftp data is waiting, or that a previously scheduled event is occurring.
+These are two examples of an <a href="callbackDemo.html">object-oriented sort of callback function</a>, 
+also known to the Design Pattern crowd as the Observer pattern. 
+</body>
+</html>

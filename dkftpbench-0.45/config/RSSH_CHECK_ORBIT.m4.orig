@@ -1,0 +1,140 @@
+dnl autoconf macroses for detecting ORBacus (http://www.ooc.com)
+dnl (C) Ruslan Shevchenko <Ruslan@Shevchenko.Kiev.UA>, 1998
+dnl Modified for Orbit by Dimi Shahbaz.
+dnl $Id: RSSH_CHECK_ORBIT.m4,v 1.1 2002/03/27 01:56:56 rssh Exp $
+dnl
+AC_DEFUN(RSSH_CHECK_ORBIT,[
+AC_REQUIRE([AC_PROG_CC])dnl
+AC_REQUIRE([AC_PROG_CXX])dnl
+AC_REQUIRE([AC_PROG_CPP])dnl
+AC_REQUIRE([AC_PROG_CXXCPP])dnl
+
+AC_CHECKING(for ORBIT)
+
+orbit=no
+
+AC_ARG_WITH(orbit, [orbit: prefix to Orbit installation (default: /usr/local) ],\
+            ORBIT_PREFIX=${with_orbit} , OB_PREFIX=/usr/local )
+
+AC_CHECKING(for Orbit)
+
+AC_LANG_SAVE
+AC_LANG_CPLUSPLUS
+
+if test ! $ORBIT_PREFIX = no
+then
+
+
+svCPPFLAGS=$CPPFLAGS
+svCXXFLAGS=$CXXFLAGS
+svCXXCPPFLAGS=$CXXCPPFLAGS
+svLIBS=$LIBS
+svRSSH_ROLLBACK=$rssh_rollback
+rssh_rollback=true
+
+dnl RSSH_CHECK_JTC
+
+CXXCPPFLAGS="$CXXCPPFLAGS  -I/usr/include/glib-1.2/  -I/usr/lib/glib/include/ -I$ORBIT_PREFIX/include/orbit-1.0/"
+CPPFLAGS="$CPPFLAGS  -I/usr/include/glib-1.2/ -I/usr/lib/glib/include/ -I$ORBIT_PREFIX/include/orbit-1.0/"
+
+AC_CHECK_HEADER( orb/orbitcpp.hh, orbit=yes , orbit=no )
+else
+ orbit=no
+fi
+
+if test "x$orbit" = xyes
+then
+
+AC_CHECK_LIB(socket,socket, LIBS="-lsocket $LIBS",,)
+AC_CHECK_LIB(nsl,gethostbyname, LIBS="-lnsl $LIBS",,)
+
+LIBS="-L$ORBIT_PREFIX/lib -lorbitcpp -lORBit -lIIOP -lORBitutil -lglib -lm $LIBS"
+         
+AC_SUBST(ORBIT_PREFIX)
+
+ORB_PREFIX=$ORBIT_PREFIX
+AC_SUBST(ORB_PREFIX)
+
+ORB=Orbit
+AC_SUBST(ORB)
+
+
+IDL=$ORBIT_PREFIX/bin/orbit-idl
+AC_SUBST(IDL,$IDL)
+IDLCXX=$ORBIT_PREFIX/bin/orbit-idl
+AC_SUBST(IDLCXX,$IDLCXX)
+
+IDLFLAGS="$IDLFLAGS -I$ORBIT_PREFIX/share/idl/orbit-1.0/"
+AC_SUBST(IDLFLAGS)
+
+ORB_INCLUDE_PREFIX=orb
+AC_SUBST(ORB_INCLUDE_PREFIX)
+
+
+dnl client
+IDL_CLN_H=-cpp.hh
+IDL_CLN_H_SUFFIX=-cpp.hh
+IDL_CLN_H1_SUFFIX=no
+AC_SUBST(IDL_CLN_H,$IDL_CLN_H)
+AC_SUBST(IDL_CLN_H_SUFFIX,$IDL_CLN_H_SUFFIX)
+AC_SUBST(IDL_CLN_H1_SUFFIX,$IDL_CLN_H1_SUFFIX)
+AC_DEFINE_UNQUOTED(IDL_CLN_H,$IDL_CLN_H)
+AC_DEFINE_UNQUOTED(IDL_CLN_H_SUFFIX,$IDL_CLN_H_SUFFIX)
+
+IDL_CLN_CPP=-cpp.cc
+IDL_CLN_CPP_SUFFIX=-cpp.cc
+AC_SUBST(IDL_CLN_CPP,$IDL_CLN_CPP)
+AC_SUBST(IDL_CLN_CPP_SUFFIX,$IDL_CLN_CPP)
+AC_DEFINE_UNQUOTED(IDL_CLN_CPP_SUFFIX,$IDL_CLN_CPP)
+
+IDL_CLN_O=-cpp.o 
+IDL_CLN_OBJ_SUFFIX=-cpp.o 
+AC_SUBST(IDL_CLN_O,$IDL_CLN_O)
+AC_SUBST(IDL_CLN_OBJ_SUFFIX,$IDL_CLN_OBJ_SUFFIX)
+
+dnl server
+IDL_SRV_H=-cpp.hh
+IDL_SRV_H_SUFFIX=-cpp.hh
+IDL_SRV_H1_SUFFIX=no
+AC_SUBST(IDL_SRV_H,$IDL_SRV_H)
+AC_SUBST(IDL_SRV_H_SUFFIX,$IDL_SRV_H_SUFFIX)
+AC_SUBST(IDL_SRV_H1_SUFFIX,$IDL_SRV_H1_SUFFIX)
+AC_DEFINE_UNQUOTED(IDL_SRV_H,$IDL_SRV_H)
+AC_DEFINE_UNQUOTED(IDL_SRV_H_SUFFIX,$IDL_SRV_H_SUFFIX)
+
+IDL_SRV_CPP=-cpp.cc
+IDL_SRV_CPP_SUFFIX=-cpp.cc
+AC_SUBST(IDL_SRV_CPP,$IDL_SRV_CPP)
+AC_SUBST(IDL_SRV_CPP_SUFFIX,$IDL_SRV_CPP)
+AC_DEFINE_UNQUOTED(IDL_SRV_CPP_SUFFIX,$IDL_SRV_CPP)
+
+IDL_SRV_O=-cpp.o 
+IDL_SRV_OBJ_SUFFIX=-cpp.o 
+AC_SUBST(IDL_SRV_O,$IDL_SRV_O)
+AC_SUBST(IDL_SRV_OBJ_SUFFIX,$IDL_SRV_OBJ_SUFFIX)
+
+
+CORBA_H='orb/orbitcpp.hh'
+AC_DEFINE_UNQUOTED(CORBA_H,<$CORBA_H>)
+
+AC_SUBST(HAVE_ORB_IDL)
+  
+AC_DEFINE(ORBIT)
+
+else
+
+CPPFLAGS=$svCPPFLAGS
+CXXCPPFLAGS=$svCXXCPPFLAGS
+CXXFLAGS=$svCXXFLAGS
+LIBS=$svLIBS
+eval "$rssh_rollback"
+rssh_rollback="$svRSSH_ROLLBACK"
+
+fi
+
+AC_LANG_RESTORE
+
+AC_MSG_RESULT(Orbit check result: $orbit)
+
+])dnl
+dnl

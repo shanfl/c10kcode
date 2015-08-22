@@ -1,0 +1,7 @@
+To build the ftp benchmark, run
+	./configure
+	make all
+and try it out with './bench'.
+
+For more info, read
+	index.html

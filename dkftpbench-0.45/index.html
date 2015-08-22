@@ -1,0 +1,493 @@
+<html>
+<head>
+<title>dkftpbench</title>
+</head>
+<body>
+<h1>dkftpbench</h1>
+
+Need to stress out an ftp server, or measure how many users
+it can support?  dkftpbench can do it.
+<p>
+Want to write your own highly efficient networking software,
+but annoyed by having to support very different code for
+Linux, FreeBSD, and Solaris?  libPoller can help.
+
+<h2>Sources</h2>
+<ul>
+<li><a href="dkftpbench-0.45.tar.gz">dkftpbench-0.45.tar.gz</a> - as a tarball
+<li><a href="dkftpbench-0.45/">dkftpbench-0.45/</a> - as individual files
+<li><a href="doc/index.html">Source code documentation</a> 
+<li><a href="ChangeLog">ChangeLog</a>
+</ul>
+
+<h2>Support</h2>
+If you have a question about dkftpbench, join the
+<a href="http://groups.yahoo.com/group/ftpbench">ftpbench mailing list</a>
+and post it there.
+
+<h2>License</h2>
+dkftpbench is released under the 
+<a href="http://www.fsf.org/copyleft">GPL (GNU Public License) v2</a>.
+
+<h2>Introduction</h2>
+dkftpbench is an FTP benchmark program inspired by
+SPECweb99.
+The result of the benchmark is a number-of-simultaneous-users rating;
+after running the benchmark properly, you have a good idea how many
+simultaneous dialup clients a server can support.  
+The target bandwidth per client is set at 28.8 kilobits/second to model
+dialup users; this is important for servers on the real Internet, which
+often serve thousands of clients on only 10 MBits/sec of bandwidth.
+<p>
+The final result of the benchmark is "the number of simultaneous
+28.8 kilobits/second dialup users".  To estimate this number,
+the benchmark starts up a new simulated user as soon as the last one has
+finished connecting.  It stops increasing the number of users when one
+fails to connect, fails to maintain the desired bandwidth, or the limit
+specified by the -n option is reached.  It runs the simulated
+users until the amount of time specified by the -t option has elapsed
+since the last simulated user birth or death; the final score is the
+number of users still alive at the end.
+<p>
+To help people tune up their systems in preparation for running the benchmark,
+the utility <a href="#tuning">dklimits</a> is provided.
+
+<h2>Results</h2>
+<a href="results.html">Comparisons of various ftp daemons, and 
+between poll and F_SETSIG,</a> using this
+tool are available.
+<p>
+<a href="Poller_bench.html">Results of a microbenchmark comparing poll() and /dev/poll</a>
+are available.
+
+<h2>Competition</h2>
+I planned to hold a <a href="bakeoff.html">Linux FTP Server Performance Bakeoff</a>
+in March 2000 using this benchmark, but it looks like it might be more like March 2002 :-(
+
+<h2>FTP Client Library</h2>
+As part of this project, a multiplexing FTP client
+library has been developed.  This will let programs do 
+<a href="nonblocking.html">nonblocking</a> FTP client stuff more or less
+conveniently.  Potentially useful for FTP clients that want to fetch
+lots of files at once.  The library consists of all the source files in
+the ftp benchmark except for bench.cc and robouser.{cc,h}.
+<p>
+Of particular interest is <a href="doc/Poller.html">Poller</a>, 
+an OO wrapper around the various readiness
+notification methods supported by various versions of Unix
+(vanilla Unix poll() and select(), FreeBSD's kqueue(), Linux and Solaris /dev/poll,
+O_ASYNC for Linux, and O_ONESIGFD for Linux).
+Regardless of whether the underlying notification mechanism is
+edge-triggered or level-triggered, Poller presents a level-triggered
+interface to the program.<p>
+The benchmark uses Poller, and you can even pick one of the six readiness
+notification schemes at runtime using the -s option.
+<p>
+You can use Poller in your programs, too.  'make install' installs
+libPoller.a and the needed headers.
+<p>
+If you want to use nonblocking connects, read Stevens 'Unix Network
+Programming vol 1', p. 410 and see the unit test testRejection() in
+Poller_test.cc for how to do it.
+<p>
+Warning: the 2.4 linux kernel's SIGIO support doesn't extend to pipes.
+If you're using the 2.4 linux kernel, you may need to apply
+<a href="http://www.cs.helsinki.fi/linux/linux-kernel/2002-13/0191.html">Jeremy Elson's patch</a>
+to your kernel if you want to use Poller_sigio.
+
+<h2>Status</h2>
+The following features are implemented:
+<ul>
+<li>Compiles and runs on Linux, FreeBSD, and Solaris (or did, last I tried)
+<li>fetches many files in parallel
+<li>waits for each connect to finish (and then a bit) before starting next one;
+slows down to &lt; 1 connect/second when it reaches 75% of desired number of users.
+This spreads out user activity more evenly.
+<li>checks bandwidth continuously during each file fetch, stops adding users if any fetch too slow
+<li>throttles each fetch to use only the specified bandwidth
+<li>search for the max number of supported users
+<li>Displays verbose error message when any user fails
+<li>Aborts if it detects the client system running out of resources
+<li>Aborts if connecting to the server takes &gt; 5 seconds
+<li>Aborts if it takes longer than 5 seconds to get first packet of a file
+<li>Uses new Poller class for scalability; you can specify which Poller to use on the commandline
+<li>Supports slow datarates (before, it only handles rates above 80kbits/sec on some systems)
+<li>Lets you set how picky it is about datarates (before, its 'must be faster than'
+threshold was fixed at 3/4 the target bandwidth)
+<li>Supports alternative readiness notification methods like O_ASYNC and O_ONESIGFD
+<li>Provided both as a standalone executable, and as a Corba object.
+(Thanks to <a href="http://corbaconf.kiev.ua/">http://corbaconf.kiev.ua/</a>
+for the Corba autoconf macros.  
+See <a href="omni_scripts.tar.gz">omni_scripts.tar.gz</a> 
+for how I compiled OmniOrb 3.)
+<li>Switches to BINARY mode after login.  (The client API lets you choose;
+edit robouser.cc to skip the START_TYPE state if you want to use ASCII.)
+</ul>
+The following features are not yet implemented:
+<ul>
+<li>verify that each ftp command (other than GET) doesn't take too long
+<li>verify that GETs retrieve right number of bytes
+<li>verify that GETs retrieve right bytes
+<li>fetch random files
+<li>upload test files to server under test
+<li>support non-passive mode
+<li>optimization
+</ul>
+Issues:
+<ul>
+<li>Doesn't support Solaris /dev/poll yet.  (It would be easy but I've been lame.)
+</ul>
+
+<h2>Example</h2>
+After unpacking the sources, configure them for your system with the command
+<pre>./configure</pre>
+This will generate Makefile from Makefile.in.
+<p>
+To make sure the sources arrived intact and work properly on your system, type
+<pre>make check</pre>
+It will build all unit tests, and fail if any unit test fails.  
+You must be connected to the Internet, as this will try to download a file from ftp.uu.net.
+<p>
+To build the system tuning tool dklimits, type
+<pre>make dklimits</pre>
+Run it on both the client and the server machine; make sure 
+that the number of files it can open is about
+three times the desired number of users, and
+that the number of ports it can bind is higher than the desired number
+of users.  You should not be running X Windows or any other programs
+on the client and server machines when running the benchmark.
+<p>
+To build the benchmark, type
+<pre>make</pre>
+This produces the executable 'dkftpbench', the tuning program 'dklimits', and
+a bunch of unit tests (executables with names ending in _test) that you can
+ignore for now.
+<p>
+Here's a simple use of dkftpbench:
+<pre>./dkftpbench -n1 -hftp.uu.net -t15 -v</pre>
+This tells bench to simulate one user fetching the
+default file from ftp.uu.net repeatedly, and stop after fifteen seconds.
+The program produces this output:
+<pre>
+Option values:
+ -hftp.uu.net host name of ftp server
+ -P21 port number of ftp server
+ -n1 number of users
+ -t15 length of run (in seconds)
+ -b3600 desired bandwidth (in bytes per second)
+ -uanonymous user name
+ -probouser@ user password
+ -fusenet/rec.juggling/juggling.FAQ.Z file to fetch
+ -m1500 bytes per 'packet'
+ -v1 verbosity
+1 users
+User0: fetching 22708 bytes took 6.530000 seconds, 3477 bytes per second
+User0: fetching 22708 bytes took 6.530000 seconds, 3477 bytes per second
+Test over.  1 users left standing.
+</pre>
+
+<h2>Distributed Load Generation</h2>
+As of version 0.42, dkftpbench includes an experimental distributed version.
+To use it, follow these steps:
+<ol>
+<li>Install a C++ corba library, preferably OmniOrb 3.
+(See omni_scripts.tar.gz for an example of how to build it.)
+<li>'make CorbaPlatoon_impl corbaftpbench'
+<li>Start a Corba name service somewhere.
+<li>Start a copy of CorbaPlatoon_impl on each load generation machine,
+being sure to configure Corba on each load machine to know about your name service.
+<li>Start a single copy of corbaftpbench (it's nearly the same as dkftpbench).
+This should start your own little distributed denial-of-service-attack
+against the ftp server of your choice.  Please don't bombard a public FTP
+server -- run your own for the purpose!
+</ol>
+
+<h2><a name="tuning">System Tuning</a></h2>
+On a Linux system, you may need to pay attention to the per-process limit on 
+open filehandles (ulimit -n) as well as the system limit on open filehandles
+(/proc/sys/fs/file-max) and the available port range (/proc/sys/net/ipv4/ip_local_port_range).
+<p>
+The program <a href="dkftpbench-0.45/dklimits.c">dklimits.c</a> can help you check your
+system's limits.  Generally, ftp daemons require at least two network sockets and
+one disk file descriptor per user.  Use dklimits to verify you have enough
+sockets and descriptors for your expected number of users.  Same goes for
+systems that will be used as ftp load generators, except that since they
+don't usually store data on disk, they don't need the disk file descriptor.
+<p>
+On Linux, I run the following commands before starting the server or client:
+<pre>
+ulimit -n 4096
+echo 1024 32767 &gt; /proc/sys/net/ipv4/ip_local_port_range
+echo 4096 &gt; /proc/sys/fs/file-max
+</pre>
+and then check using dklimits to make sure these settings took effect.
+
+<h2>Reporting Guidelines</h2>
+I invite people to run this on their FTP servers and report the results by email.
+If you want to do this, use the following command
+to generate test data files:
+<pre>make data</pre>
+This will generate x10k.dat, x100k.dat, and x1000k.dat.
+Run the commands
+<pre>time dkftpbench -h200.201.202.203 -utestuser -ptestpass -n500 -t600 -fx10k.dat</pre>
+and
+<pre>time dkftpbench -h200.201.202.203 -utestuser -ptestpass -n500 -t600 -fx1000k.dat</pre>
+on a different machine from the ftp server (substituting your server's IP address,
+username, and password), and send in the following data:
+<ul>
+<li>Server hardware (CPU type, speed, L2 cache, RAM, network card)
+<li>Server OS (name, version, kernel version, output of dklimits immediately before starting server, other tuning parameters)
+<li>Client hardware (CPU type, speed, L2 cache, RAM, network card)
+<li>Client OS (name, version, kernel version, output of dklimits immediately before starting dkftpbench, other tuning parameters)
+<li>Number of users left and elapsed time for x10k.dat
+<li>Number of users left and elapsed time for x1000k.dat
+</ul>
+I will collect and post the results.
+<p>
+Eventually, a more sophisticated workload and set of reporting guidelines will be provided.
+
+<h2>How to read the sources</h2>
+<ol>
+<li>Read this whole Web page, including the <a href="#coding">coding standards</a>.
+<li>Read the pages this links to, including the documentation included
+with the sources (listed above).
+<li>If you don't know sockets, read one of the tutorials linked to below.
+<li>If poll() or "non-blocking I/O" is still mysterious to you, read 
+<a href="http://www.amazon.com/exec/obidos/ASIN/013490012X/">
+Unix Network Programming</a> 
+or
+<a href="http://www.amazon.com/exec/obidos/ASIN/0201563177/">
+Advanced Programming in the UNIX Environment</a>
+until it makes sense :-)
+<li>To start reading the sources, arrange the modules in order from lowest level
+(i.e. doesn't use any of the other modules) to highest level
+(ui.e. ses but isn't used by any of the other modules).  
+For this project, the order is nbbio, fdmap, ftp_client_proto, ftp_client_pipe,
+robouser, bench.
+<li>Pick the first module in the list, e.g. nbbio.
+Review its .h file (<a href="nbbio.h">nbbio.h</a>).
+Note any confusing parts, and email the mailing list with any questions.
+They may respond by improving the comments in the file, by
+simply answering your questions, or even by fixing a bug you find.
+<li>After the .h file makes sense to you, review the same module's .cc file
+(e.g. <a href="nbbio.cc">nbbio.cc</a>) and do the same thing.
+<li>When you understand that module's .h and .cc, move on to the
+next module in the list that uses modules you've already reviewed.  
+When you come across references to modules you've already reviewed,
+you'll have a good understanding of them, and they won't stump you.
+</ol>
+
+<h2>Throttling</h2>
+ftp_client_pipe_t keeps track of the number of bytes read via
+the network (in either data or control channels).  When this exceeds
+a threshold, no more reads are executed for the appropriate amount of time.
+ftp_client_pipe_t sleeps for enough clock ticks to hide the granularity of
+the clock.    In particular, ftp_client_pipe_t sleeps as soon as
+Tw = (bytes_sent / desired_bandwidth - elapsed_time) is greater than eight 
+clock ticks.
+For example, if eclock_hertz() is 100, the desired bandwidth
+is 28000 bits/sec, it's been one clock tick since it last woke up,
+and it has received 1500 bytes since it last woke up, then
+desired_bandwidth = 28000 / eclock_hertz() = 280 bits/tick, and
+Tw = 1500 * 8 / 280 - 1 = 42, so it would wait 42 clock ticks before
+accepting any more reads.
+On the other hand, if it takes 60 clock ticks to receive 1500 bytes,
+it won't sleep at all.
+(Compare with SPECweb99's "Rated Receive" logic, which only sleeps
+at the end of each file fetch.)
+<p>
+But see 
+<a href="rick.html">Rick Jones' post on comp.benchmarks</a>
+for a report of some trouble with this kind of throttling technique.
+
+<h2>To Thread or not to Thread</h2>
+I've chosen an event-driven approach to the problem.  ("Event driven" is
+also known as "non-threaded", "polling I/O", "non-blocking I/O", or 
+"multiplexed I/O".)
+Many programmers today are familiar only with the threaded model of
+writing servers, where the server creates a new thread or process
+for each client.  This lets you write code in a stream-of-conciousness
+way, but has several drawbacks: it can be very hard to debug, and
+it can have high overhead.
+<a href="http://www.scriptics.com/people/john.ousterhout/">John Ousterhout's</a> 
+talk on "Why Threads are a Bad Idea (for most purposes)" explains
+some of the reasons programmers familiar with threads should also 
+learn about the alternatives to threads:
+<blockquote><i>
+The talk compares the threads style of programming to an alternative
+approach, events, that use only a single thread of control. Although each
+approach has its weaknesses, events result in simpler, more manageable
+code than threads, with efficiency that is generally as good as or better
+than threads. Most of the applications for which threading is currently
+recommended (including nearly all user-interface applications) would be
+better off with an event-based implementation.
+</i></blockquote>
+In an event-driven server, a single thread handles many clients at the same 
+time.  This is done by dividing up the work into small pieces, and explicitly
+handling a single stream of all the pieces of work from all the
+clients; each client gets a moment of attention just when it needs it.
+<p>
+I've chosen this approach because it will use much less
+memory to support tens of thousands of clients than would a thread-per-client
+approach.  I may still introduce threads at some point to allow the
+program to make use of multiple CPU's, but I will do so sparingly.
+
+<h2>Support for alternatives to poll()</h2>
+dkftpbench supports both poll() and
+<a href="http://www.kegel.com/c10k.html">alternative readiness notification methods</a>.
+This was done by adding a Poller class which 
+abstracts the poll() system call; concrete subclasses of this
+have been written for poll(), select(), F_SETSIG, kqueue(), and /dev/poll.
+dkftpbench has been tested with most of these (not kqueue or /dev/poll yet),
+and you can choose which one to use from the dkftpbench commandline.
+
+<h2>Notes</h2>
+<ul>
+<li><a href="nonblocking.html">nonblocking.html</a> - introduction to non-blocking I/O
+<li><a href="callbackDemo.html">callbackDemo.html</a> - explanation of callback functions in C++
+<li><a href="classes.html">classes.html</a> - class relationships in this project (outdated)
+<li><a href="theory.html">theory.html</a> - explanation of how the code works (outdated)
+</ul>
+
+<h2>Other Benchmarks</h2>
+<ul>
+<li><a href="ftp://ftp.cup.hp.com/dist/networking/benchmarks/netperf/experimental/netperf3.tar.gz">netperf3</a> (experimental) - includes an FTP benchmark,
+and shows the kind of remote control invocation of benchmark clients
+I'd like to do.  Doesn't try to include a general-purpose FTP client
+library, and is based on threads instead of nonblocking I/O, 
+so it's not going to be as useful or fast as ours, but it's well
+worth looking at and running.
+<li><a href="ftp://ftp.cup.hp.com/dist/networking/briefs/ftp_server_results.txt
+">Results</a> from netperf3 for a HP computer.  Very interesting reading!
+<li><a href="http://www.spec.org/osg/web99/docs/whitepaper.html">
+http://www.spec.org/osg/web99/docs/whitepaper.html</a>
+<li>See
+<a href="http://www.acme.com/software/http_load/">http://www.acme.com/software/http_load/</a> 
+for a multiplexing HTTP benchmark (lacks throttling)
+<li>See
+<a href="ftp://ftp.lysator.liu.se/pub/unix/ptester/ptester-1.2.tar.gz">
+ftp://ftp.lysator.liu.se/pub/unix/ptester/ptester-1.2.tar.gz</a> for a simple multithreaded
+http load generator (lacks throttling, precise result reporting)
+<li> See
+<a href="http://www.kegel.com/nt-linux-benchmarks.html">
+http://www.kegel.com/nt-linux-benchmarks.html</a>
+for where
+I eventually hope to publish FTP benchmark results.
+</ul>
+
+<h2>Interesting Server Programs</h2>
+<ul>
+<li><a href="http://www.IN-Berlin.DE/User/kraxel/webfs.html">webfs</a> is a very
+simple, single-threaded, multiplexing HTTP server.  The event
+processing is very simple and clear; it's a good server to look at
+to understand multiplexing.  It uses select(), but the idea is the same for
+poll().
+<li><a href="http://mathop.diva.nl">mathopd</a> is another server
+that uses poll() or select(), and has a very clear main loop.
+<li><a href="http://freshmeat.net/search.php3?query=ftpd">Search freshmeat.net for ftpd</a> -- 
+there are a lot of FTP server programs out there.
+For instance, <a href="http://freshmeat.net/appindex/1999/02/17/919251275.html">Betaftpd</a> is a single-threaded FTP server.
+<li><a href="http://linuxmafia.com/pub/linux/security/ftp-daemons">Linuxmafia.com's list of Linux FTP daemons</a>
+<li><a href="http://www.mycgiserver.com/~ranab/ftp/index.html">Rana Bhattacharyya's FTP Server</a> - multithreaded; resumable; lots of features; now part of Apache Avalon project - 17KLOC.  Took about 5MB of RAM per connection in my tests.
+</ul>
+
+<h2>Other FTP libraries</h2>
+<ul>
+<li><a href="http://www.cnj.digex.net/~pfau/ftplib/">Thomas Pfau's ftplib</a> 
+-- existing library that implements the client side of the FTP protocol.  
+Doesn't let you multiplex lots of connections, though.
+<li><a href="http://oss.software.ibm.com/developerworks/opensource/ftp/">IBM's FTP beans</a> -- open source Java ftp protocol and UI beans
+</ul>
+
+<h2>Standards</h2>
+<ul>
+<li><a href="ftp://ftp.isi.edu/in-notes/rfc959.txt">RFC 959: the File Transfer Protocol</a>
+<li><a href="ftp://ftp.ietf.org/internet-drafts/draft-ietf-ftpext-mlst-13.txt">draft-ietf-ftpext-mlst-13.txt</a>
+-- defines MDTM, SIZE, and RESTart extensions to the FTP protocol. 
+Commonly used by web browsers.
+<li><a href="ftp://ftp.isi.edu/in-notes/rfc1945.txt">RFC 1945: the Hypertext Transfer Protocol -- HTTP/1.0</a>
+<li><a href="ftp://ftp.isi.edu/in-notes/rfc2616.txt">RFC 2616: the Hypertext Transfer Protocol -- HTTP/1.1</a>
+<li><a href="http://cr.yp.to/ftp.html">D.J.Bernstein's formal description of FTP as observed in the wild</a>
+</ul>
+
+<h2>Resources for learning about network programming</h2>
+<ul>
+<li> <a href="http://www.ecst.csuchico.edu/~beej/guide/net/">Beej's Guide to Network Programming Using Internet Sockets</a>
+<li> <a href="http://ccnga.uwaterloo.ca/~mvlioy/stuff/ipc_adv_tut.txt">An Advanced 4.3BSD Interprocess Communication Tutorial</a> (old, but still relevant)
+<li> For those who already know the basics of sockets: 
+<a href="http://www.amazon.com/exec/obidos/ASIN/013490012X/">
+Unix Network Programming : Networking Apis: Sockets and Xti (Volume 1)</a>
+by the late W. Richard Stevens describes many of the I/O
+strategies and pitfalls related to writing high-performance networking code.
+(His examples are at <a href="http://www.kohala.com/start/unpv12e.html">http://www.kohala.com/start/unpv12e.html</a>.
+They should take about one minute to download, unpack, and compile according
+to the README.)
+<li>See 
+<a href="http://www.kegel.com/c10k.html">
+http://www.kegel.com/c10k.html</a>
+for info on how to write efficient
+network code than handles lots of open connections (like a server,
+or like a benchmarking client).
+<li><a href="undump.pl">undump.pl</a> -- perl script to turn output of
+<tt>tcpdump -x -s 1024 tcp</tt> into human-readable form, so you can
+snoop on what FTP commands a browser is using
+</ul>
+
+<h2><a name="coding">Coding Standards</a></h2>
+Since this code is licensed under the GPL, you're free to do as you 
+like with it.  If you want to contribute to the project, though,
+please follow these guidelines:
+<ul>
+<li> In general, documentation is written first, then the module self-test,
+then implementation.  Documentation should be extremely brief, 
+consist mostly of interface comments embedded in the .h files, 
+and describe things just well enough that you could implement or use the code
+with it as a guide.  The self-test is written first so it can be
+used to help initial debugging of the module, and later as a regression test.
+<li>Anyone who adds code should first review the existing code
+to look for places where the .h files are confusing or incomplete,
+and give feedback to Dan so he can fix this.  This will help
+everyone understand the code, and will ensure the documentation is up to 
+snuff for future contributors.
+<li> Comments at the beginning of modules or functions are
+called 'interface comments'.  Design comments:
+<ul>
+<li>document the interface, rationale, and intent of the module or function
+<li>avoid talking about implementation details that don't affect the interface
+<li>start with a /*------------- line
+<li>end with a ------------*/ line
+<li>enclose text whose left margin is indented to line up with the *
+<li>don't use stars at the left margin of the text.
+<li>are repeated verbatim in both the .h and .cc files.  
+<li>explain what the module or function is for well enough that you don't 
+have to look at the innards to use it or understand what it's for.
+<li>are kept up to date; when the interface of a function changes,
+the interface comment should change to reflect it.
+</ul>
+<li> Each module has a simple self-test program at the bottom, surrounded with
+#ifdef modulename_MAIN ... #endif.
+The self-test should, if possible, provide a simple unsupervised
+go/no-go indication.
+<li> 'make test' will compile and run all module self-tests.
+<li> tab stops 4 and indent width 4 are used throughout.  Try to
+follow the style of the existing code (i.e. spaces after
+keywords, curly braces on same line as keywords, etc.)
+<li> A minimal subset of C++ is used; essentially, it's
+C with classes.
+<li> No C++ - style I/O (no cout, cin, etc.).  All I/O is native Unix I/O
+(e.g. read, write) or C - style I/O (printf, etc.).  
+(That doesn't mean cin, cout, etc are bad, they're just not to be used in this project.)
+<li> No inheritance without good reason; check with Dan before using any.  (Inheriting from Poller::Client
+is ok.)
+<li> No templates in the main code.  It's ok in unit tests, though...
+<li> No <a href="http://www.stlport.org">STL</a>.  (That doesn't mean STL
+is evil; it's just not appropriate for this project.)
+</ul>
+
+<hr>
+<i>Last Change: 18 Mar 2002<br>
+Most files Copyright 1999-2002 Dan Kegel<br>
+nbbio.{cc,h} are Copyright 1999 Disappearing, Inc.<br>
+See AUTHORS in the tarball for more details</i>
+</body>
+</html>

@@ -1,0 +1,258 @@
+<html>
+<head>
+<title>Introduction to non-blocking I/O</title>
+</head><body>
+<h1>Introduction to non-blocking I/O</h1>
+Programs that use non-blocking I/O tend to follow the rule that
+every function has to return immediately, i.e. all the functions
+in such programs are nonblocking.
+Thus control passes very quickly from one routine to the next.  
+You have to understand the overall picture to some extent before any
+one piece makes sense.
+(This makes it harder to get your mind around than the same program
+written with blocking calls, but the benefits mentioned elsewhere
+in this document make up for this trouble, so don't be discouraged.)
+<p>
+Many objects need to wait for time to pass or for an external event to occur, 
+but because their methods must return immediately, they can't do the obvious
+or natural thing.  Instead, they use the "state machine" technique.
+You might see this motif repeatedly throughout the code.
+<p>
+To illustrate this, let's consider a simple networking class that
+lets you send a file to a remote machine, assuming the connection
+is all set up.  Normally, you might write it like this:
+<pre>
+#define BUFSIZE 1024
+class filesender_t {
+public:
+    /* Send a file on the given socket.
+     * 'filename' is the name of the file to send.
+     * 'socket' is an open network connection.
+     * On exit, socket is closed.
+     */
+    void sendFile(const char *filename, int socket)
+    {
+        int fd;
+        int nread; 
+        int nwrite, i;
+        char buf[BUFSIZE];
+
+        /* Open the file */
+        fd = open(filename, O_RDONLY);
+        if (fd &lt; 0)
+            fatal_error("open failed");
+
+        /* Send the file, one chunk at a time */
+        do {                                            /* loop in time! */
+            /* Get one chunk of the file from disk */
+            nread = read(fd, buf, BUFSIZE);
+            if (nread == 0) {
+                /* All done; close the file and the socket. */
+                close(fd);
+                close(socket);
+                break;
+            }
+
+            /* Send the chunk */
+            for (i=0; i&lt;nread; i += nwrite) {        /* loop in time! */
+                /* write might not take it all in one call,
+                 * so we have to try until it's all written
+                 */
+                nwrite = write(socket, buf + i, nread - i);
+                if (nwrite &lt; 0) 
+                    fatal_error("write failed");
+            }
+        }
+    }
+}
+</pre>
+But in the world of nonblocking programming, you can't do this, because 
+it loops until some external event happens
+(i.e. the socket accepts the whole file), which is a major no-no.
+The work of that loop
+has to be moved into a function that does a sliver of the work
+on each call.  The main program agrees to ensure that this function is
+called periodically.
+The way you do this is turn the local variables of the loop into
+member variables of the class, and the body of the loop into a method.
+For instance:
+<pre>
+/*----------------------------------------------------------------------
+ Portable function to set a socket into nonblocking mode.
+ Calling this on a socket causes all future read() and write() calls on
+ that socket to do only as much as they can immediately, and return 
+ without waiting.
+ If no data can be read or written, they return -1 and set errno
+ to EAGAIN (or EWOULDBLOCK).
+ Thanks to Bjorn Reese for this code.
+----------------------------------------------------------------------*/
+int setNonblocking(int fd)
+{
+    int flags;
+
+    /* If they have O_NONBLOCK, use the Posix way to do it */
+#if defined(O_NONBLOCK)
+    /* Fixme: O_NONBLOCK is defined but broken on SunOS 4.1.x and AIX 3.2.5. */
+    if (-1 == (flags = fcntl(fd, F_GETFL, 0)))
+        flags = 0;
+    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+#else
+    /* Otherwise, use the old way of doing it */
+    flags = 1;
+    return ioctl(fd, FIOBIO, &flags);
+#endif
+}     
+
+#define BUFSIZE 1024
+class filesender_t {
+    int m_fd;               /* file being sent */
+    char m_buf[BUFSIZE];    /* current chunk of file */
+    int m_buf_len;          /* bytes in buffer */
+    int m_buf_used;         /* bytes used so far; &lt;= m_buf_len */
+    enum { IDLE, SENDING } m_state; /* what we're doing */
+
+public:
+    filesender() {
+        m_state = IDLE;     /* not doing anything initially */
+    }
+
+    /* Start sending a file on the given socket.
+     * Set the socket to be nonblocking.
+     * 'filename' is the name of the file to send.
+     * 'socket' is an open network connection.
+     */
+    void sendFile(const char *filename, int socket)
+    {
+        int nread; 
+        int nwrite, i;
+
+        /* Force the network socket into nonblocking mode */
+        setNonblocking(socket);
+
+        /* Open the file */
+        m_fd = open(filename, O_RDONLY);
+        if (m_fd &lt; 0)
+            fatal_error("open failed");
+
+        /* Start sending it */
+        m_buf_len = 0;
+        m_buf_used = 0;
+        m_socket = socket;
+        m_state = SENDING;
+    }
+
+    /* Continue sending the file started by sendFile().
+     * Call this periodically.
+     * Returns nonzero when done.
+     */
+    int handle_io()
+    {
+        if (m_state == IDLE)
+            return 2;     /* nothing to do */
+
+        /* If buffer empty, fill it */
+        if (m_buf_used == m_buf_len) {
+            /* Get one chunk of the file from disk */
+            m_buf_len = read(m_fd, m_buf, BUFSIZE);
+            if (m_buf_len == 0) {
+                /* All done; close the file and the socket. */
+                close(m_fd);
+                close(m_socket);
+                m_state = IDLE;
+                return 1;
+            }
+            m_buf_used = 0;
+        }
+
+        /* Send one chunk of the file */
+        assert(m_buf_len &gt; m_buf_used);
+        nwrite = write(m_socket, m_buf + m_buf_used, m_buf_len - m_buf_used);
+        if (nwrite &lt; 0) 
+            fatal_error("write failed");
+        m_buf_used += nwrite;
+        return 0;
+    }
+}
+</pre>
+You can imagine the user code calling this in a simple loop, as in the following example,
+which prints the file to stdout as if it were a network connection:
+<pre>
+main()
+{
+    filesender_t c;
+    int sock = fileno(stdout);
+
+    c.sendFile("foo.txt", sock);
+    do {
+        int done = c.handle_io();
+        if (done) 
+            break;
+    }
+}
+</pre>
+This may seem like a lot of work for nothing -- all we did was turn the
+loop inside out -- but notice that you can now send multiple
+files at the same time, e.g.
+<pre>
+#define MAXCLIENTS 10
+main()
+{
+    filesender_t filesenders[MAXCLIENTS];
+    int n_filesenders;
+    int listenfd;
+    struct sockaddr_in servaddr;
+
+    /* Set up to be a daemon listening on port 8000 */
+    listenfd = socket(AF_INET, SOCK_STREAM, 0);
+    memset(&servaddr, 0, sizeof(servaddr));
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    servaddr.sin_port   = htons(8000);
+    bind(listenfd, (struct sockaddr *) &servaddr, sizeof(servaddr));
+    /* Force the network socket into nonblocking mode */
+    setNonblocking(listenfd);
+
+    /* Wait for connections, and send anyone who connects 
+     * the contents of foo.txt
+     */
+    n_filesenders = 0;
+    do {
+        /* If we don't have a full set of clients already,
+         * listen for a new connection.
+         */
+        if (n_filesenders &lt; MAXCLIENTS) {
+            int fd = accept(listenfd, NULL, NULL);
+            if (fd != -1) {
+                /* Someone connected.  Send them the file */
+                filesenders[n_filesenders].sendFile("foo.txt", fd);
+                n_filesenders++;
+            }
+        }
+        /* Pump data out to all the connected clients */
+        for (int i=0; i&lt;n_filesenders; i++)
+            filesenders[i].handle_io();
+    }
+}
+</pre>
+This example isn't very realistic, as it wastes CPU time, doesn't re-use the elements of
+filesenders[] when they're done, and doesn't do enough error checking,
+but you get the idea.
+<p>
+The next trick needed to get good performance out of this
+approach is to use poll() to sleep until some file descriptor
+is ready for I/O, and then call handle_io() on just that one
+file descriptor.  
+<p>
+See also:
+<ul>
+<li><a href="http://www.amazon.com/exec/obidos/ASIN/013490012X/">
+Unix Network Programming : Networking Apis: Sockets and Xti (Volume 1)</a>
+by the late W. Richard Stevens 
+<li><a href="http://www.kohala.com/start/unpv12e.html">The examples for 'Unix Network Programming'</a>.
+<li><a href="http://www.lcg.org/sock-faq/">UNIX Socket FAQ</a>
+<li><a href="http://www.whitefang.com/unix/faq_toc.html">Unix Programming FAQ</a>
+</ul>
+<hr>
+<i>Copyright Dan Kegel 1999<br>
+</body>
+</html>

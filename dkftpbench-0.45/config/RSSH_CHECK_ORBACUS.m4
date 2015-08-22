@@ -1,0 +1,193 @@
+dnl autoconf macroses for detecting ORBacus (http://www.ooc.com)
+dnl (C) Ruslan Shevchenko <Ruslan@Shevchenko.Kiev.UA>, 1998
+dnl $Id: RSSH_CHECK_ORBACUS.m4,v 1.23 2002/01/16 11:45:03 yad Exp $
+dnl
+AC_DEFUN(RSSH_CHECK_ORBACUS,[
+AC_REQUIRE([AC_PROG_CC])dnl
+AC_REQUIRE([AC_PROG_CXX])dnl
+AC_REQUIRE([AC_PROG_CPP])dnl
+AC_REQUIRE([AC_PROG_CXXCPP])dnl
+
+AC_CHECKING(for ORBACUS)
+
+orbacus=no
+
+AC_ARG_WITH(ob, [ob: prefix to OB installation (default: /usr/local) ],\
+            OB_PREFIX=${with_ob} , OB_PREFIX=/usr/local )
+
+AC_CHECKING(for ORBacus)
+
+AC_LANG_SAVE
+AC_LANG_CPLUSPLUS
+
+if test ! $OB_PREFIX = no
+then
+
+
+svCPPFLAGS=$CPPFLAGS
+svCXXFLAGS=$CXXFLAGS
+svCXXCPPFLAGS=$CXXCPPFLAGS
+svLIBS=$LIBS
+svRSSH_ROLLBACK=$rssh_rollback
+rssh_rollback=true
+
+RSSH_CHECK_JTC
+
+CXXCPPFLAGS="$CXXCPPFLAGS  -I$OB_PREFIX/include"
+CPPFLAGS="$CPPFLAGS  -I$OB_PREFIX/include"
+
+AC_CHECK_HEADER( OB/CORBA.h, orbacus=yes , orbacus=no )
+else
+ orbacus=no
+fi
+
+if test "x$orbacus" = xyes
+then
+
+AC_CHECK_LIB(socket,socket, LIBS="-lsocket $LIBS",,)
+AC_CHECK_LIB(nsl,gethostbyname, LIBS="-lnsl $LIBS",,)
+
+LIBS="-L$OB_PREFIX/lib -lOB $LIBS"
+         
+AC_SUBST(OB_PREFIX)
+
+ORB_PREFIX=$OB_PREFIX
+AC_SUBST(ORB_PREFIX)
+
+ORB=ORBacus
+AC_SUBST(ORB)
+
+
+IDL=$OB_PREFIX/bin/idl
+AC_SUBST(IDL,$IDL)
+IDLCXX=$OB_PREFIX/bin/idl
+AC_SUBST(IDLCXX,$IDLCXX)
+
+IDLFLAGS="$IDLFLAGS -I$OB_PREFIX/idl -I$OB_PREFIX/idl/OB"
+AC_SUBST(IDLFLAGS)
+
+ORB_INCLUDE_PREFIX=OB
+AC_SUBST(ORB_INCLUDE_PREFIX)
+
+
+IDL_CLN_H=.h
+IDL_CLN_H_SUFFIX=.h
+IDL_CLN_H1_SUFFIX=no
+AC_SUBST(IDL_CLN_H,$IDL_CLN_H)
+AC_SUBST(IDL_CLN_H_SUFFIX,$IDL_CLN_H_SUFFIX)
+AC_SUBST(IDL_CLN_H1_SUFFIX,$IDL_CLN_H1_SUFFIX)
+AC_DEFINE_UNQUOTED(IDL_CLN_H,$IDL_CLN_H)
+AC_DEFINE_UNQUOTED(IDL_CLN_H_SUFFIX,$IDL_CLN_H_SUFFIX)
+
+IDL_CLN_CPP=.cpp
+IDL_CLN_CPP_SUFFIX=.cpp
+AC_SUBST(IDL_CLN_CPP,$IDL_CLN_CPP)
+AC_SUBST(IDL_CLN_CPP_SUFFIX,$IDL_CLN_CPP)
+AC_DEFINE_UNQUOTED(IDL_CLN_CPP_SUFFIX,$IDL_CLN_CPP)
+
+IDL_CLN_O=.o 
+IDL_CLN_OBJ_SUFFIX=.o 
+AC_SUBST(IDL_CLN_O,$IDL_CLN_O)
+AC_SUBST(IDL_CLN_OBJ_SUFFIX,$IDL_CLN_OBJ_SUFFIX)
+
+IDL_SRV_H=_skel.h 
+IDL_SRV_H_SUFFIX=_skel.h 
+IDL_SRV_H1_SUFFIX=no 
+AC_SUBST(IDL_SRV_H,$IDL_SRV_H)
+AC_SUBST(IDL_SRV_H_SUFFIX,$IDL_SRV_H_SUFFIX)
+AC_SUBST(IDL_SRV_H1_SUFFIX,$IDL_SRV_H1_SUFFIX)
+AC_DEFINE_UNQUOTED(IDL_SRV_H_SUFFIX,$IDL_SRV_H)
+
+IDL_SRV_CPP=_skel.cpp
+IDL_SRV_CPP_SUFFIX=_skel.cpp
+AC_SUBST(IDL_SRV_CPP,$IDL_SRV_CPP)
+AC_SUBST(IDL_SRV_CPP_SUFFIX,$IDL_SRV_CPP)
+
+IDL_SRV_O=_skel.o
+IDL_SRV_OBJ_SUFFIX=_skel.o
+AC_SUBST(IDL_SRV_O,$IDL_SRV_O)
+AC_SUBST(IDL_SRV_OBJ_SUFFIX,$IDL_SRV_O)
+
+IDL_TIE_H_SUFFIX=_tie_skel.h
+IDL_TIE_H1_SUFFIX=no
+IDL_TIE_CPP_SUFFIX=no
+AC_SUBST(IDL_TIE_H_SUFFIX,$IDL_TIE_H_SUFFIX)
+AC_SUBST(IDL_TIE_H1_SUFFIX,$IDL_TIE_H1_SUFFIX)
+AC_SUBST(IDL_TIE_CPP_SUFFIX,$IDL_TIE_CPP_SUFFIX)
+
+
+CORBA_H='OB/CORBA.h'
+AC_DEFINE_UNQUOTED(CORBA_H,<$CORBA_H>)
+
+COSNAMING_H='OB/CosNaming.h'
+AC_DEFINE_UNQUOTED(COSNAMING_H,<$COSNAMING_H>)
+ORB_COSNAMING_LIB="-lCosNaming"
+AC_SUBST(ORB_COSNAMING_LIB)
+
+AC_CACHE_CHECK("if OB_INTEGER_VERSION defined",
+rssh_cv_have_ob_integer_version,
+AC_TRY_COMPILE(#include <$CORBA_H>
+,
+[
+#ifndef OB_INTEGER_VERSION
+#error "OB_INTEGER_VERSION_NOT_DEFINED"
+ob integer version not defined and C++ compiler think, that errors are warning
+#else
+return 0;
+#endif
+], rssh_cv_have_ob_integer_version=1, rssh_cv_have_ob_integer_version=0)
+)
+
+
+if test "x$rssh_cv_have_ob_integer_version" = "x1" 
+then
+AC_CACHE_CHECK("if this is 4.x branch ",
+rssh_cv_ob_4,
+AC_TRY_COMPILE(#include <$CORBA_H>
+,
+[
+#if (OB_INTEGER_VERSION >= 3999951L )
+return 0;
+#else
+#error "qqq"
+ob integer version < ,,, but C++ compiler think, that errors are warning
+#endif
+],rssh_cv_ob_4=yes,rssh_cv_ob_4=no)
+)
+fi
+
+
+if test "x$rssh_cv_ob_4" = "xyes" 
+then
+AC_DEFINE(CORBA_MODULE_NAMESPACE_MAPPING)
+AC_DEFINE(CORBA_HAVE_POA)
+HAVE_ORB_IDL=1
+AC_DEFINE(CORBA_SYSTEM_EXCEPTION_IS_STREAMBLE)
+AC_DEFINE(CORBA_ORB_HAVE_DESTROY)
+else
+HAVE_ORB_IDL=0
+AC_DEFINE(CORBA_MODULE_C_MAPPING)
+CORBA_SKELETON_SUFFIX=_skel
+AC_DEFINE_UNQUOTED(CORBA_SKELETON_SUFFIX,$CORBA_SKELETON_SUFFIX)
+fi
+AC_SUBST(HAVE_ORB_IDL)
+  
+AC_DEFINE(ORBACUS)
+
+else
+
+CPPFLAGS=$svCPPFLAGS
+CXXCPPFLAGS=$svCXXCPPFLAGS
+CXXFLAGS=$svCXXFLAGS
+LIBS=$svLIBS
+eval "$rssh_rollback"
+rssh_rollback="$svRSSH_ROLLBACK"
+
+fi
+
+AC_LANG_RESTORE
+
+AC_MSG_RESULT(ORBacus check result: $orbacus)
+
+])dnl
+dnl

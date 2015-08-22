@@ -1,0 +1,226 @@
+<h1>Theory of Operation</h1>
+See also <a href="nonblocking.html">Introduction to Nonblocking I/O</a>.
+
+<h2>Flow of Control in the ftp benchmark program</h2>
+The basic idea is that main() starts off the test with the following code:
+<pre>
+    robouser_t::static_init(&sked, arg_filename,
+        arg_clientBandwidth, 0.8 * arg_clientBandwidth, 1500, 
+        arg_hostname, 21, arg_username, arg_password);
+
+    /* Start the first user */
+    robouser_t::static_startUser();
+</pre>
+and then sits in an infinite loop that looks like this:
+<pre>
+    for (;;) {
+        /* Let the scheduler run the robots that need it */
+        sked->runAll(now);
+        /* Find out what sockets need attention */
+        nfds = robouser_t::prePoll(&pfds[0]);
+        poll(pfds, nfds, 50);
+        /* Give them the attention they deserve. */
+        for (i=0; i&lt;nfds; i++) {
+            if (!pfds[i].revents)
+                continue;
+            robouser_t::handle_io(pfds[i].fd, pfds[i].revents);
+        }
+    }
+</pre>
+The fetching of files is initiated the call to robouser_t::static_startUser(), 
+which starts the robouser's state machine going by scheduling a first call to 
+robouser_t::ftpCmdDone().  The state machine calls ftp_client_pipe_t::get() to
+start the file transfer.  Whenever poll() says a packet is ready, main() calls 
+robouser_t::static_handle_io(), which calls ftp_client_pipe_t::handle_io(), 
+which reads data from the network, hands it to ftp_client_proto_t::giveInput(),
+gets output from the protocol module by calling ftp_client_proto_t::getOutput(),
+and sends it to the network.  Whenever the ftp client library finishes a command,
+it calls robouser_t::ftpCmdDone(), which starts the next ftp command.
+
+<p>
+To see the flow of control in action, run the program in 
+verbose mode, and note the class and method names at the beginning
+of each line.  Here's an excerpt from the command 
+<pre>
+/bench -n1 -hkrunch -uspanky -pXXXXXX -ftest.dat -t2 -v 
+</pre>
+showing the events from the start of the test up to the end of the first
+file transfer.  (Repetitive sections are omitted, and line numbers have been added.)
+<pre>
+  1  Option values:
+  2   -hkrunch host name of ftp server
+  3   -P21 port number of ftp server
+  4   -n1 number of users
+  5   -t2 length of run (in seconds)
+  6   -b3600 desired bandwidth (in bytes per second)
+  7   -usparky user name
+  8   -pXXXXXX user password
+  9   -ftest.dat file to fetch
+ 10   -m1500 bytes per 'packet'
+ 11   -v1 verbose mode
+ 12  Sked::init: Allocating 2048 bytes.
+ 13  robouser_t::static_init:
+ 14  robouser0::start:
+ 15  ftp_client_proto_t::setState: line 135: m_state was 0, now 1
+ 16  ftp_client_pipe_t::init(0x806c260, 0xbffff9b0, 3600): bytes_per_tick 36
+ 17  Sked::addClient(0x806c264, 3257788)
+ 18  Sked::pop: clearing skc 0x806c264 ->skedIndex
+ 19  robouser0::ftpCmdDone: m_state 1
+ 20  ftp_client_pipe_t::connect(krunch, 21, 0)
+ 21  ftp_client_proto_t::setState: line 135: m_state was 0, now 1
+ 22  ftp_client_pipe_t::init(0x806c260, 0xbffff9b0, 3600): bytes_per_tick 36
+ 23  ftp_client_pipe_t::init: Waiting for connect to finish, m_cfd 3
+ 24  robouser0::watchfd 3
+ 25  fdmap_t::add(fd 3, userid 0)
+ 26  ftp_client_pipe_t::login(sparky, XXXXXX)
+ 27  ftp_client_proto_t::login(sparky,XXXXXX)
+ 28  ftp_client_pipe_t::handle_io(fd 3, ffff8004): state 0
+ 29  ftp_client_proto_t::getOutput: Sending 'USER sparky'
+ 30  ftp_client_pipe_t::handle_io fd 3 put 'USER sparky'
+ 31  robouser0::gotoState: old state 1 cad 1 0 0;  new state 2 cad 1 0 0
+ 32  robouser_t::static_prePoll: user 0, ndfs 1
+ 33  main:handling j 0 fd 3 revents 4
+ 34  fdmap_t::fd2user(fd 3)
+ 35  robouser0::static_handle_io(fd 3, revents 4):
+ 36  ftp_client_pipe_t::handle_io(fd 3, 4): state 0
+ 37  ftp_client_pipe_t::handle_io: Connect cfd 3 succeeded
+ 38  robouser_t::static_prePoll: user 0, ndfs 1
+ 39  main:handling j 0 fd 3 revents 1
+ 40  fdmap_t::fd2user(fd 3)
+ 41  robouser0::static_handle_io(fd 3, revents 1):
+ 42  ftp_client_pipe_t::handle_io(fd 3, 1): state 0
+ 43  ftp_client_pipe_t::handle_io fd 3 got '220 krunch FTP server (Version wu-2.4.2-VR17(1) Mon Apr 19 09:21:53 EDT 1999) ready.'
+ 44  ftp_client_proto_t::giveInput: state: 1 oReady 0 status 220, ibuf: '220 krunch FTP server (Version wu-2.4.2-VR17(1) Mon Apr 19 09:21:53 EDT 1999) ready.'
+ 45  ftp_client_proto_t::giveInput: server ok, 220 krunch FTP server (Version wu-2.4.2-VR17(1) Mon Apr 19 09:21:53 EDT 1999) ready.
+ 46  ftp_client_proto_t::setState: line 179: m_state was 1, now 3
+ 47  ftp_client_pipe_t::handle_io fd 3 got '331 Password required for sparky.'
+ 48  ftp_client_proto_t::giveInput: state: 3 oReady 0 status 331, ibuf: '331 Password required for sparky.'
+ 49  ftp_client_proto_t::setState: line 201: m_state was 3, now 4
+ 50  ftp_client_proto_t::getOutput: Sending 'PASS XXXXXX'
+ 51  ftp_client_pipe_t::handle_io fd 3 put 'PASS XXXXXX'
+ 52  robouser_t::static_prePoll: user 0, ndfs 1
+ 53  main:handling j 0 fd 3 revents 4
+ 54  fdmap_t::fd2user(fd 3)
+ 55  robouser0::static_handle_io(fd 3, revents 4):
+ 56  ftp_client_pipe_t::handle_io(fd 3, 4): state 0
+ 57  robouser_t::static_prePoll: user 0, ndfs 1
+ 58  main:handling j 0 fd 3 revents 1
+ 59  fdmap_t::fd2user(fd 3)
+ 60  robouser0::static_handle_io(fd 3, revents 1):
+ 61  ftp_client_pipe_t::handle_io(fd 3, 1): state 0
+ 62  ftp_client_pipe_t::handle_io fd 3 got '230-Please read the file README'
+ 63  ftp_client_proto_t::giveInput: state: 4 oReady 0 status 230, ibuf: '230-Please read the file README'
+ 64  ftp_client_proto_t::giveInput: multiline reply begins: '230-Please read the file README'
+ 65  ftp_client_proto_t::giveInput::PASS ok, 230-Please read the file README
+ 66  ftp_client_proto_t::setState: line 211: m_state was 4, now 5
+ 67  ftp_client_pipe_t::handle_io:notify_app: status 230, dfd_conn 0, dfd -1
+ 68  ftp_client_pipe_t::handle_io:notify_app: calling ftpCmdDone(0, 230)
+ 69  robouser0::ftpCmdDone: m_state 2
+ 70  robouser0::ftpCmdDone:CONNECTING: connect succeeded, jumping to state 3
+ 71  robouser0::gotoState: old state 2 cad 1 0 0;  new state 3 cad 0 1 0
+ 72  robouser0::ftpCmdDone: m_state 3
+ 73  robouser0::ftpCmdDone:GET: fetching file test.dat
+ 74  ftp_client_pipe_t::get(test.dat,1)
+ 75  ftp_client_proto_t::get(test.dat,): requesting port from server
+ 76  ftp_client_proto_t::callState: line 496: m_state was 5, now 8
+ 77  ftp_client_pipe_t::handle_io(fd 3, ffff8004): state 1
+ 78  ftp_client_proto_t::getOutput: Sending 'PASV'
+ 79  ftp_client_pipe_t::handle_io fd 3 put 'PASV'
+ 80  robouser0::gotoState: old state 3 cad 0 1 0;  new state 4 cad 0 1 0
+ 81  1 users
+ 82  robouser_t::static_prePoll: user 0, ndfs 1
+ 83  main:handling j 0 fd 3 revents 1
+ 84  fdmap_t::fd2user(fd 3)
+ 85  robouser0::static_handle_io(fd 3, revents 1):
+ 86  ftp_client_pipe_t::handle_io(fd 3, 1): state 1
+ 87  ftp_client_pipe_t::handle_io fd 3 got '230-  it was last modified on Wed Nov 10 23:21:37 1999 - 53 days ago'
+ 88  ftp_client_proto_t::giveInput: state: 8 oReady 0 status 230, ibuf: '230-  it was last modified on Wed Nov 10 23:21:37 1999 - 53 days ago'
+ 89  ftp_client_proto_t::giveInput: multiline reply continues: '230-  it was last modified on Wed Nov 10 23:21:37 1999 - 53 days ago'
+ 90  ftp_client_pipe_t::handle_io fd 3 got '230 User sparky logged in.'
+ 91  ftp_client_proto_t::giveInput: state: 8 oReady 0 status 230, ibuf: '230 User sparky logged in.'
+ 92  ftp_client_proto_t::giveInput: multiline reply ends: '230 User sparky logged in.'
+ 93  robouser_t::static_prePoll: user 0, ndfs 1
+ 94  main:handling j 0 fd 3 revents 1
+ 95  fdmap_t::fd2user(fd 3)
+ 96  robouser0::static_handle_io(fd 3, revents 1):
+ 97  ftp_client_pipe_t::handle_io(fd 3, 1): state 1
+ 98  ftp_client_pipe_t::handle_io fd 3 got '227 Entering Passive Mode (127,0,0,1,58,93)'
+ 99  ftp_client_proto_t::giveInput: state: 8 oReady 0 status 227, ibuf: '227 Entering Passive Mode (127,0,0,1,58,93)'
+100  ftp_client_proto_t::giveInput::PASV ok, 227 Entering Passive Mode (127,0,0,1,58,93)
+101  ftp_client_proto_t::returnState: m_state was 8, now 9
+102  ftp_client_proto_t::giveInput::PASV: sending RETR
+103  ftp_client_proto_t::getOutput: Sending 'RETR test.dat'
+104  ftp_client_pipe_t::handle_io fd 3 put 'RETR test.dat'
+105  ftp_client_pipe_t::handle_io: isPortReady TRUE, address 127.0.0.1:23866
+106  robouser0::watchfd 4
+107  fdmap_t::add(fd 4, userid 0)
+108  ftp_client_pipe_t::handle_io: socket returns dfd 4
+109  robouser_t::static_prePoll: user 0, ndfs 2
+110  main:handling j 0 fd 3 revents 4
+111  fdmap_t::fd2user(fd 3)
+112  robouser0::static_handle_io(fd 3, revents 4):
+113  ftp_client_pipe_t::handle_io(fd 3, 4): state 1
+114  ftp_client_pipe_t::handle_io: Connect dfd 4 succeeded
+115  robouser_t::static_prePoll: user 0, ndfs 2
+116  main:handling j 0 fd 3 revents 1
+117  fdmap_t::fd2user(fd 3)
+118  robouser0::static_handle_io(fd 3, revents 1):
+119  ftp_client_pipe_t::handle_io(fd 3, 1): state 1
+120  ftp_client_pipe_t::handle_io fd 3 got '150 Opening ASCII mode data connection for test.dat (2135 bytes).'
+121  ftp_client_proto_t::giveInput: state: 9 oReady 0 status 150, ibuf: '150 Opening ASCII mode data connection for test.dat (2135 bytes).'
+122  ftp_client_proto_t::giveInput::RETR in progress
+123  robouser_t::static_prePoll: user 0, ndfs 2
+124  main:handling j 1 fd 4 revents 1
+125  fdmap_t::fd2user(fd 4)
+126  robouser0::static_handle_io(fd 4, revents 1):
+127  ftp_client_pipe_t::handle_io(fd 4, 1): state 1
+128  ftp_client_pipe_t::handle_io: calling subclass
+129  robouser0::handle_data_io: fd 4, revents 1; read 1500 bytes
+130  ftp_client_pipe_t::handle_io: dfd 4 read 1500 bytes, won't read again for 41 ticks
+131  robouser_t::static_prePoll: user 0, ndfs 2
+132  main:handling j 1 fd 4 revents 1
+133  fdmap_t::fd2user(fd 4)
+134  robouser0::static_handle_io(fd 4, revents 1):
+135  ftp_client_pipe_t::handle_io(fd 4, 1): state 1
+136  ftp_client_pipe_t::handle_io: dfd 4 still needs to snooze for 41 ticks
+137  Sked::addClient(0x806c284, 3257851)
+138  ftp_client_pipe_t::handle_io: dfd 4 asleep; revents 1, m_dfd_events 1
+139  robouser_t::static_prePoll: user 0, ndfs 2
+140  main:handling j 0 fd 3 revents 1
+141  fdmap_t::fd2user(fd 3)
+142  robouser0::static_handle_io(fd 3, revents 1):
+143  ftp_client_pipe_t::handle_io(fd 3, 1): state 2
+144  ftp_client_pipe_t::handle_io fd 3 got '226 Transfer complete.'
+145  ftp_client_proto_t::giveInput: state: 9 oReady 0 status 226, ibuf: '226 Transfer complete.'
+146  ftp_client_proto_t::giveInput::RETR server finished, 226 Transfer complete.
+147  ftp_client_proto_t::setState: line 286: m_state was 9, now 5
+148  ftp_client_pipe_t::handle_io:notify_app: status 226, dfd_conn 0, dfd 4
+149  ftp_client_pipe_t::handle_io:notify_app: status 226, connecting 0, dfd 4, so no notification yet
+150  robouser_t::static_prePoll: user 0, ndfs 2
+151  Sked::pop: clearing skc 0x806c284 ->skedIndex
+152  ftp_client_pipe_t::handle_io(fd 4, 1): state 1
+153  ftp_client_pipe_t::handle_io: calling subclass
+154  robouser0::handle_data_io: fd 4, revents 1; read 690 bytes
+155  ftp_client_pipe_t::handle_io: dfd 4 read 714 bytes, won't read again for 19 ticks
+156  robouser_t::static_prePoll: user 0, ndfs 2
+157  main:handling j 1 fd 4 revents 10
+158  fdmap_t::fd2user(fd 4)
+159  robouser0::static_handle_io(fd 4, revents 10):
+160  ftp_client_pipe_t::handle_io(fd 4, 10): state 1
+161  ftp_client_pipe_t::handle_io: closing dfd 4
+162  Sked::delClient: index 0, m_used 0
+163  robouser0::unwatchfd 4
+164  fdmap_t::del(fd 4)
+165  ftp_client_pipe_t::handle_io:notify_app: status 226, dfd_conn 0, dfd -1
+166  ftp_client_pipe_t::handle_io:notify_app: calling ftpCmdDone(0, 226)
+167  robouser0::ftpCmdDone: m_state 4
+168  User0: fetching 2190 bytes took 0.430000 seconds, 5093 bytes per second
+
+</pre>
+Eventually, this page will provide a line-by-line analysis of the above trace.
+At the moment, you'll have to wade through it yourself, referring to the
+source code to see what printed out each line.
+<p>
+<hr>
+<i>Copyright Dan Kegel 1999<br>
+<a href="index.html">Return to index</a>

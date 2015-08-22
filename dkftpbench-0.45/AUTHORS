@@ -1,0 +1,5 @@
+All files unless otherwise noted were written by Dan Kegel <dank@alumni.caltech.edu>
+
+Poller_select.* and Poller_devpoll.* written by Fred Cheng <fcheng@ucla.edu>
+
+Poller_kqueue.* written by Michael R. Elkins <me@sigpipe.org>

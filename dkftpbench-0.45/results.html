@@ -1,0 +1,267 @@
+<h1>dkftpbench results</h1>
+
+This page lists preliminary results of informal performance comparisons of 
+various ftp daemons, using <a href="index.html">dkftpbench</a> as the workload
+and measuring tool.
+
+<h2>14 Sept 2001</h2>
+Version 0.30 of the dkftpbench benchmark allows choosing between poll() and
+realtime signals (a la F_SETSIG), so I ran a test to compare the performance 
+of the two methods.
+<p>
+The client was a 450 MHz Pentium III with 128MB RAM 
+running Red Hat 7.0, using a vanilla 2.4.9 kernel.  
+The server was a dual 650 MHz Pentium III running Red Hat 7.2 beta 2,
+using the 2.4.7-2-smp kernel that came with rh7.2b2.
+The client and server were connected using 100baseT through a Sohoware switch.
+tcpdump was run to verify that no DNS or Ident queries were generated
+by the ftp daemon.  The systems were not running X, and
+<pre>
+/etc/init.d/crond stop
+/etc/init.d/anacron stop
+</pre>
+were run to prevent cron from starting expensive housekeeping tasks
+during the run.
+<p>
+The commands
+<pre>
+ulimit -n 8192
+echo 1024 32767 &gt; /proc/sys/net/ipv4/ip_local_port_range
+echo 8192 &gt; /proc/sys/fs/file-max
+</pre>
+were run on both client and server before starting.
+<p>
+A 10 kilobyte file was fetched repeatedly by many simulated users,
+using the command
+<pre>
+time ./dkftpbench -hSERVER -n3000 -t180 -b1000 -f/pub/x10k.dat -sX
+</pre>
+where X was p for poll or r for realtime signals, and<br>
+SERVER was the hostname of the machine running the ftp server.<br>
+The -b1000 option
+selects a client download speed of 1000 bytes / sec; clients
+that can't maintain that rate cause the test to fail.
+<p>
+<center><table border=1>
+<tr>
+<th colspan=3>Results</th></row>
+<tr>
+<th>
+<th><a href="http://www.wu-ftpd.org/">wu-ftpd</a>    
+<th><a href="http://www.ncftpd.com">ncftpd</a>
+<tr><th>Version                <td>2.6.1-18<td>2.7.0	<td>
+<tr><th>Options                <td>-s -A<td>minusers 3000
+<tr><th colspan=3><center>10KB file, 1kbyte/sec, poll()</center>
+<tr><th>users	   <td>730    <td>3000
+<tr><th>client CPU <td>56-85% <td>83-90%
+<tr><th colspan=3><center>10KB file, 1kbyte/sec, F_SETSIG, rtsig-max=1024</center>
+<tr><th>users	   <td>741 <td>3000
+<tr><th>client CPU <td>3-7%<td>28-40%
+</table></center>
+At 730 users (that's all wu-ftpd could handle), 
+F_SETSIG used only one tenth as much CPU time as poll() (7% vs. 70%)
+according to top.
+<p>
+For tests above 730 users, ncftpd was used instead of wu-ftpd.  
+Oddly, it made dkftpbench use less CPU; maybe it wrote out the data in
+fewer packets.
+<p>
+At 2500 users, F_SETSIG's advantage started to wilt a bit, and CPU usage 
+climbed to 15%-20% (compared to poll's 70%).
+<p>
+At 3000 users (as far as I was able to get ncftpd to go),
+with /proc/sys/kernel/rtsig-max at its default value of 1024, 
+F_SETSIG's CPU usage climbed as high as 40% (compared to poll's 90%).
+<p>
+The program had to fall back to poll() several times per second.
+This is a bit suprising, since at any one time, there were only
+about 300 active fd's.  It seems that when F_SETSIG is on, a signal
+is queued each time a packet is received -- even if that signal
+carries exactly the same information as the ten signals already in the queue.
+<p>
+I also tested with Luban's signal-per-fd patch (see
+<a href="http://marc.theaimsgroup.com/?l=linux-kernel&m=100051778816762&w=2">my post on linux-kernel</a>),
+which did reduce the number of redundant signals, and got rid of nearly 
+all the SIGIO's, but did not seem to reduce CPU usage.  Perhaps at higher
+numbers of users...
+<p>
+
+<h2>24-25 Jan 2000: wu-ftpd 120, proftpd 151, ncftpd 134, betaftpd 258</h2>
+I ran a quick comparison of 
+<a href="http://www.wu-ftpd.org/">wu-ftpd</a>, 
+<a href="http://www.proftpd.net">proftpd</a>,
+<a href="http://www.ncftpd.com">ncftpd</a>, and 
+<a href="http://betaftpd.sourceforge.net/">betaftpd</a>
+on a 100baseT 
+connection between a fast, big client and a slow, small server.<br>
+In all cases, commuication was done via 100baseT using a crossover
+cable (no hub, to avoid collisions).
+X was running on the client system.  Very little else was active on
+either machine.
+<p>
+Version 0.7 of the <a href="index.html">dkftpbench</a> benchmark 
+started a number of simulated dialup users which logged in and then 
+fetched a single binary 1 megabyte file (x1000k.dat) over and over without
+logging out; no directory listings were requested.   If any user didn't
+get 75% of 28.8kbits/sec, it dropped out.
+The run continued until the number of users was stable for 3 minutes.
+<p>
+wu-ftpd was run standalone with argument -s.
+<p>
+<a href="tune_wuftpd.html">Tuning suggestions for wu-ftpd</a> were
+received but not used.  Next time...
+<p>
+ncftpd was set with minusers 50 or 100, maxusers 300.  The author
+kindly provided me with <a href="tune_ncftpd.html">tuning notes</a>,
+but I have not used them yet.  Next time...
+<p>
+betaftpd was compiled with -g -O2 instead of -g, and the check for too
+many clients was fixed (should be just "is fd > 1023?").
+<p>
+proftpd-1.2.0pre10 was compiled from source for standalone without any 
+special options, and MaxInstances was set to 500.
+<p>
+The commands
+<pre>
+ulimit -n 4096
+echo 1024 32767 &gt; /proc/sys/net/ipv4/ip_local_port_range
+echo 4096 &gt; /proc/sys/fs/file-max
+</pre>
+were run on both client and server before starting.
+<p>
+Here's a summary of the software used, and the results
+from dkftpbench:
+
+<center><table border=1>
+<tr><th>                       
+<th><a href="http://www.wu-ftpd.org/">wu-ftpd</a>    
+<th><a href="http://www.proftpd.net">proftpd</a>
+<th><a href="http://www.ncftpd.com">ncftpd</a>
+<th><a href="http://betaftpd.sourceforge.net/">betaftpd</a>
+<tr><th>Version                <td>wu-2.5.0(1)<td>1.2.0pre10<td>2.5.0/391	<td>0.0.8pre11
+<tr><th>Patches                <td>	<td>	<td><td>gcc -O2, fixed max fd check
+<tr><th>Options                <td>-s<td>	<td><td>
+<tr><th colspan=5><center>10KB file</center>
+<tr><th>users	<td>49	<td>82	<td>194	<td>751
+<tr><th>load avg<td>8	<td>7	<td>6	<td>1.0
+<tr><th>CPU		<td>90%	<td>100%<td>50%	<td>100%
+<tr><th colspan=5><center>1000KB file</center>
+<tr><th>users	<td>120	<td>151	<td>134	<td>258
+<tr><th>load avg<td>50	<td>60	<td>5	<td>0.25
+<tr><th>CPU		<td>80%?<td>80%	<td>25%	<td>20%
+</table></center>
+<p>
+Note that betaftpd was limited by the 1024 file descriptor limit of select
+in the run with 751 clients.  (Oddly enough, you don't always need
+two sockets per client; during part of the transfer, the data
+socket is closed, and doesn't count against the 1024 fd per process limit.)
+<p>
+dkftpbench was compiled using the fastest options listed in the Makefile,
+and run with the commandline 
+<pre>
+bench -hp90 -fx100k.dat -n300 -t180
+</pre>
+except that the number of users was adjusted downwards if too many
+clients failed, and upwards if none failed.
+<p>
+The server was nearly unusable when wu-ftpd was running, and
+really bogged down when proftpd was running.  ncftpd and betaftpd
+felt very light.
+<h2>13/14 Jan 2000: wu-ftpd 39 or 115, ncftpd 184, betaftpd 249</h2>
+I ran a quick comparison of 
+<a href="http://www.wu-ftpd.org/">wu-ftpd</a>, 
+<a href="http://www.ncftpd.com">ncftpd</a>, and 
+<a href="http://betaftpd.sourceforge.net/">betaftpd</a>
+on a 10baseT 
+connection between a fast, big client and a slow, small server.<br>
+In all cases, commuication was done via 10baseT using a crossover
+cable (no hub, to avoid collisions).
+X was not running on either system.
+<p>
+Version 0.4 of the <a href="index.html">dkftpbench</a> benchmark 
+started a number of simulated dialup users which logged in and then 
+fetched a single binary 100kilobyte file (x100k.dat) over and over without
+logging out; no directory listings were requested.   If any user didn't
+get 80% of 28.8kbits/sec, it dropped out.
+The run continued until the number of users was stable for 3 minutes.
+<p>
+The test severely taxed the 10baseT connection; it should be redone
+with full duplex 100baseT.
+<p>
+wu-ftpd was run in two ways: started from inetd untuned,
+and (after staring at the man page for a while) standalone with
+argument -s.  (The -w and -Q options were also tried, but had little
+effect on this benchmark).
+<p>
+<a href="tune_wuftpd.html">Tuning suggestions for wu-ftpd</a> were
+received after the test, and might be used in a future test.
+<p>
+ncftpd was set with minusers 50, maxusers 300.  The author
+kindly provided me with <a href="tune_ncftpd.html">tuning notes</a>,
+but I have not used them yet; I believe they will make more of a difference
+in larger runs or runs with smaller files, so I'll use them when
+I do a 100baseT test.
+<p>
+betaftpd was compiled with -O6 instead of -g, and a small bug in
+its PASV command was fixed (thanks to the author for the patch).
+<p>
+Here's a summary of the software used, and the results, given
+as (# of users started) ... (# of users left at end of run):
+
+<table>
+<tr><th>                       
+<th><a href="http://www.wu-ftpd.org/">wu-ftpd</a>    
+<th><a href="http://www.wu-ftpd.org/">wu-ftpd</a>    
+<th><a href="http://www.ncftpd.com">ncftpd</a>
+<th><a href="http://betaftpd.sourceforge.net/">betaftpd</a>
+<tr><td>Version                <td>wu-2.5.0(1)<td>wu-2.5.0(1)<td>2.5.0/391	<td>betaftpd 0.0.8pre10
+<tr><td>Patches                <td>           <td>	<td>	<td>gcc -O6, PASV fix
+<tr><td>Options                <td>           <td>-s<td>	<td>
+<tr><td>30 users<td>30	<td>30
+<tr><td>50 users<td>39	<td>50	<td>50	<td>50
+<tr><td>100 users<td>	<td>100	<td>100	<td>98
+<tr><td>150 users<td>	<td>115	<td>150	<td>145
+<tr><td>200 users<td>	<td>	<td>155	<td>192
+<tr><td>300 users<td>	<td>	<td>184	<td>249
+</table>
+<p>
+dkftpbench was compiled using the fastest options listed in the Makefile,
+and run with the commandline 
+<pre>
+bench -hp90 -fx100k.dat -n$n -t180 >> $n.log
+</pre>
+<p>
+Here are system parameters and various system limits measured by 'dklimits' 
+and 'free' before the benchmark run.  (ulimit -n was not changed for either
+client nor server, so only 1024 filehandles were available per process.)
+Note that since each of the 250 users took about 30 seconds for each fetch, 
+the test only needed about 5 new ports per second, so the limit of 3900
+local ports on the client was not an issue.
+<table>
+<tr><th>                       <th>Server  <th>Client
+<tr><td>CPU                    <td>90 MHz Pentium<td>450 MHz Pentium III
+<tr><td>OS                     <td>Red Hat 6.0<td>Red Hat 6.1
+<tr><td>Total mem              <td>30756KB <td> 128012KB      
+<tr><td>Free mem               <td>8408KB  <td> 76616KB      
+<tr><td>/proc/sys/net/ipv4/ip_local_port_range<td>1024 32767<td> 1024	4999
+<tr><td>/proc/sys/fs/file-max  <td>4096  <td> 4096
+<tr><td>/proc/sys/fs/inode-max <td>4096  <td> 16384
+<tr><td>available fd's         <td>1021  <td> 1021 
+<tr><td>" explicit ports         <td>60413 <td> 60355
+<tr><td>" ephemeral ports        <td>1021  <td> 1021
+<tr><td>" nonblocking connect()'s<td>1021  <td> 1021 
+<tr><td>poll() limit             <td>2048  <td> 2048 
+</table>
+<p>
+The actual conditions varied slightly from the above description,
+but not enough to affect results (e.g. a hub was used initially,
+was swapped out for a crossover cable when collisions were noticed,
+but the results changed by less than 1%).
+
+<p>
+<hr>
+<i>
+Copyright 2000-2001, Dan Kegel
+<br>
+<a href="index.html">[Return to dkftpbench]</a>
+</i>

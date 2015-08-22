@@ -1,0 +1,305 @@
+CHANGELOG for dkftpbench
+0.45
+    Fix bug in Poller_test which caused it to not even try to test Poller_sigio.
+    Poller_test now verifies that Poller does not forget about ready fds.
+    Poller_test now verifies that Poller can return errors from nonblocking connects properly.
+    Fix bug in Poller_sigio which caused it to forget about ready fds.
+    Fix compile error on FreeBSD (from Francis Little).
+    Add warnings in index.html, Poller_sigpoll.h, and Poller_test.cc
+    about the need to patch the 2.4 linux kernel to get SIGIO support for pipes.
+
+0.44
+    Fix bug reported by Jeon where Poller_select::getNextEvent could return
+    deleted client.
+    Added type() method to ftp_client_*, make robouser call type("I") so
+    we benchmark binary transfer performance. Ian Willis shamed me into
+    doing this by sending a patch that implemented it; I chose a slightly
+    more general approach.
+
+0.43
+    Poller_bench no longer complains when it gets spurious readiness events.
+    Started porting corba code to build under orbit-cpp.
+
+0.42
+    inet_aton.c now actively avoids being compiled as C++
+    Makefile.am avoids including inet_aton unless really needed
+
+0.41
+    Added corbaftpbench.cc, which harnesses all the currently running
+    CorbaPlatoon_impls into a coordinated benchmark, more or less.
+    Fixed problem in Platoon::reset() (forgot to deregister self from Sked).
+
+0.40
+    Added CorbaPlatoon.idl, CorbaPlatoon_{impl,test}.cc;
+    you should now be able to 'easily' write load test programs
+    that span multiple machines using Corba.
+
+    Added reset() and setVerbosity() methods to Platoon
+    Removed verbosity argument from Platoon::init()
+
+0.39
+    Refactored; robouser's static variables were moved into
+    a new class, Platoon, in preparation for turning dkftpbench into
+    a CORBA object.
+    Now ramps up adaptively; you can control how many connections
+    are outstanding.  Cisco wanted to be able to ramp up infinitely
+    fast, and now they can.
+
+0.38
+    Compiles on Solaris 7 -- getifaddrs.c doesn't do anything 
+    there yet, but at least it compiles.
+
+    You may now override CFLAGS and CXXFLAGS during configure,
+    as is customary with autoconf.  
+
+    robouser_test takes optional arguments so it's more useful
+    during troubleshooting.  Its defaults were updated to be more
+    likely to work for everyone.
+
+0.37
+    'make install' now installs libPoller.a and Poller*.h for use
+    by other programs.
+
+0.36
+    Minor portability fixes (should compile under Hard Hat PPC now).
+
+0.35
+    If -a is used, manage ephemeral ports by hand.  Hardcoded range
+    is 1024 to 51023; see 'minport' and 'maxport' in ftp_client_pipe.cc.
+    -a now does provide relief from the port limit.
+
+0.34
+    Added -a option to use all local interfaces.  Sadly, on Linux this
+    doesn't expand the number of ephemeral binds you can do.  I posted
+    a note (with untested patch) to linux-kernel Sep 30 2001; let's see
+    what they say.  I'd hate to have to manage ephemeral ports in userspace.
+
+0.33
+    Added -B option to let you control how picky bench is about bandwidth.
+    Made O_ONEPERSIG case compile properly.
+    Fixed a few bugs that show up when you kill the ftp server when
+    there are many clients active.
+
+0.32
+    Fixed configure.in rules for detecting F_SETSIG
+    Added support for Luban's one-signal-per-fd patch (O_ONEPERSIG); untested
+
+    Added getifadrs.c in preparation for adding option to
+    use all local interfaces (you can add more interface aliases to get
+    around the limit on # of ports).
+
+0.31
+    fix silly bug in bench.cc introduced in 0.30 that made it just not work
+    except under extreme load.  Duh.
+
+0.30
+    bench.cc now drains events from poller before waiting for more events;
+    it used to leave events in the poller sometimes, which might have caused
+    poor response time.
+
+    Poller_sigio::add(fd) doesn't try to guess fd's initial readiness status;
+    it just says 'fd is ready for everything'.  This will be wrong sometimes,
+    but user programs have to be able to cope with false readiness indications
+    anyway (see Stevens), so that should be ok.
+    ftp_client_pipe.cc was fixed to deal better with false readiness events on connect.
+
+    Added results from 3000 user test to results.html.
+
+0.29
+    Fixed bug in fallback to poll() in Poller_sigio.
+    Fixed dumb timeout bug in Poller_select::waitForEvents().
+    Use slightly nicer method of clearing the signal queue in Poller_sigio.
+    Added results of some tests comparing dkftpbench using Poller_poll
+    and Poller_sigio.  Runs fairly well now.
+
+0.28
+    Poller_sigio now falls back properly to poll() on receipt of a SIGIO.
+    Avoid generating a callback within a callback.
+
+0.27
+    dkftpbench now works properly with slow data rates
+    dkftpbench now works properly with Poller_sigio
+    dkftpbench now supports -s argument to let you pick which Poller
+    to use at runtime.
+    Not well tested yet.  
+    I did verify that the virtual call overhead was too small to matter much.
+
+0.26
+    Refactored so Poller fits in a bit more naturally; no more O(N)!
+    Obey javadoc rules on more comments in classes
+    Just barely enough testing to know it's not completely broken
+    Still need to figure out how to call clearReadiness() so we're 
+    compatible with Poller_sigio
+
+0.25
+    bench now uses Poller_poll.  Not scalable yet -- still O(N) -- but
+    it won't be too hard to fix that, just have to get rid of prePoll().
+
+0.24
+    Added first cut at Poller_sigio, to support Linux's rtsig-based readiness notification
+    Note: doesn't work in red hat 7.0; 7.2 beta seems ok, 7.1 probably ok
+    Still need to update the ftp benchmark to use Poller
+
+0.23
+    Added includes needed to compile under Red Hat 7.1.
+    More verbose when connection fails.
+
+0.22
+    Fixed crash bug if max bytes per sec was lower than eclock_hertz
+    Switch to less busy public ftp server for 'make check';
+    I was having trouble accessing ftp.java.sun.com
+
+0.21
+    Poller_bench.cc now lets you specify a runtime and several pipe counts,
+    and saves Linux kernel profiling data.  Poller_bench.sh analyzes
+    the kernel profiling data and produces reports.  Poller_bench.html
+    updated to reflect new code, and includes lmbench results for test
+    systems.
+
+0.20
+    Finally fixed bugs in dklimits.c that were pointed out long ago
+    Poller_bench.sh now does 1 active fd and 1, 1000, 2000, 4000, and 8000
+    socketpairs.  Results now in Poller_bench.html.
+    Poller_bench.cc now takes a last argument listing what methods
+    you want to test (p = poll, d = /dev/poll, s = select, k = kqueue)
+
+0.19
+    Added shell script to drive microbenchmark.
+    Added microbenchmark results for /dev/poll, rewrote Poller_bench.txt.  
+    Fixed Makefile.am goof (left out Poller_devpoll).
+    Slight cleanup to Poller_devpoll::getNextEvent.
+    Added Solaris 7 results.
+
+0.18 24 Sept 2000
+    Fixed bug in roboclient.cc / ftp_client_pipe.cc where an EWOULDBLOCK
+    when waking up after throttling incorrectly caused ftp_client_pipe to abort
+    This changes the interface to clients of ftp_client_pipe slightly.
+
+    Fixed bug in Poller_bench - it didn't spread the active fd's evenly, which
+    unfairly favored select().
+
+    Removed field Poller::PollEvent.events, since some subclasses can't easily
+    support it, and it wasn't really needed anyway.
+
+    Because people seldom use urgent data, and it looked like it was slowing
+    down Poller_select, added --enable-urgent option to configure to make it optional.
+
+    Optimized Poller_select::getNextEvent to avoid jumps in its inner loop. 
+    It increased score by 2%, big whoop.  Probably dominated by copying the fdset?
+
+    Wrote up microbenchmark results comparing poll and select in Poller_bench.txt.
+
+0.17 18 Sept 2000
+    Fred fixed problem in Poller_devpoll.add() and contributed Poller_bench,
+    a microbenchmark
+
+0.16 15 Sept 2000
+    Moved wakeUp() into base class to reduce duplicated code.
+    Added initWakeUpPipe(), partly to avoid overhead of pipes if wakeUp() not needed.
+    Fixed missing include in Poller_test.cc for devpoll case
+
+0.15 15 Sept 2000
+    Cleaned up versions of Poller_kqueue and Poller_devpoll
+
+0.14 14 Sept 2000
+    Integrated support for kqueue() written by Michael R. Elkins <me@sigpipe.org>
+    Integrated preliminary support for /dev/poll written by Fred Cheng <fcheng@ucla.edu>
+    Removed bogus time check in Sked_test
+
+0.13 4 Sept 2000
+    Integrated support for select() written by Fred Cheng (fcheng@ucla.edu)
+    Fixed minor interface comment bugs, improved a few comments.
+    Removed getNumDescriptors() and made waitForEvents() return errno
+    to avoid complicating the select implementation.
+
+0.12 11 Aug 2000
+    Poller.{cc,h} debugged and usable.  Ripped out timeout code.
+    Still don't use them.  Soon...
+
+0.11 25 July 2000
+    Poller.{cc,h} now a bit more real, handles timeouts, too.
+    Still don't use it yet.
+    Fetch files from linuxberg instead of uunet for unit test (share the pain :-)
+    Reorg index.html.
+    Include html in tarball.
+
+0.10 Early July 2000
+    poll test now prints accurate results, thanks to Steinar (?) for the patch
+    added Poller.{cc,h}, but don't use it yet
+
+0.9 10 Mar 2000
+    Added back 'data' target in Makefile accidentally dropped in 0.8
+    Added install-sh file to source archive to make configure happy
+    Untested change to handle_data_io that should work correctly if
+    read() returns -1 with errno EWOULDBLOCK
+    Note: still letting transfer type default to ascii or whatever; should 
+    probably be forcing binary transfers.
+
+0.8 20 Feb 2000
+    Switched to automake.  Compile options now specified by command line
+    option to 'configure'.
+    To enable very verbose mode, you need to do 
+      './configure --enable-dprint; make'
+    To enable debugging, you need to do 
+      './configure --enable-debug; make'
+    These can be combined, e.g. 
+      './configure --enable-dprint --enable-debug; make'
+
+    To run the unit tests, type 'make check'.  It should print out 
+    "All 5 tests passed" at the bottom if they went ok.
+    (One of them requires you to be connected to the Internet, and downloads 
+    a file from ftp.uu.net.  Don't do 'make check' unless you're online.)
+
+0.7 23 Jan 2000
+    Switched to 75% of max speed rather than 80%; this is what
+    Rick Jones and I came up with after some discussion on 
+    comp.benchmarks.
+    Added timeouts; any session that takes longer than 5 seconds to
+    connect and login, or to start transferring data, is aborted.
+    Added 1MB data file
+    Fixed Y2K problem in CHANGELOG :-)
+
+0.6 17 Jan 2000
+    rampup now more gentle; seems to help.
+    less verbose by default.  To get old output, use one more -v.  
+    Makefile almost lets you override CXXOPTS on commandline.
+
+0.5 14 Jan 2000
+    control-C now prints out number of users before terminating
+    output now line buffered
+    verbose errors, even without USE_DPRINT
+
+0.4': 13 Jan 2000
+    dklimits.c now compiles with gcc
+    started using Doc++ (http://www.linuxsupportline.com/~doc++/)
+
+0.4: 13 Jan 2000
+    Includes tuning utility 'dklimits'.
+    More verbose error messages when a client connection dies.
+    Abort benchmark if running out of local resources.
+
+0.3: 4 Jan 2000
+    Now prints out useful message when killing user due to slowness.
+    Now checks continuously for sufficient bandwidth, not just at end of fetch.
+    This makes bench more cautious about creating new users, and 
+    more demanding of continuous high performance before it agrees the server 
+    can support a given # of users.
+
+    The callbacks are getting tricky...
+    ftp_client_pipe::handle_io now returns EPIPE if handle_data_io returns -1
+    ftp_client_pipe::skedCallback now calls shutdown if handle_io returns error
+    robouser::unwatchfd now calls stop if cfd is true
+    robouser::stop now defers calling shutdown until static_reap to avoid recursion
+    ftp_client_pipe now slightly more paranoid about recursion when calling unwatchfd
+
+    Fixed bug in Sked::remove() which showed up when ftp server killed during run
+0.2: 3 Jan 2000
+    Added 'make data'
+    Added interim reporting guidelines in index.html
+    No longer abort upon delayed connection refusal
+    Check for data connection completion at proper time
+    Works better with BetaFTPd now
+
+0.1: 2 Jan 2000
+    Initial release
+

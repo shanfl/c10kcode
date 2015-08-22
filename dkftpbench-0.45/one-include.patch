@@ -1,0 +1,31 @@
+######### 
+   sample patch for /usr/include to use Vitaly Luban's O_ONESIGFD patch.
+   Needed on systems where /usr/include/ does not point into 
+   /usr/src/linux/include for anything; carries the userspace visible 
+   constants into the userspace glibc headers.
+
+   It can't be folded into Vitaly's patch because it's patching
+   /usr/include rather than /usr/src/linux.
+######### 
+
+--- bits/fcntl.h.orig	Sun Sep 23 14:58:38 2001
++++ bits/fcntl.h	Sun Sep 23 15:03:34 2001
+@@ -177,3 +177,18 @@
+ # define POSIX_FADV_DONTNEED	4 /* Don't need these pages.  */
+ # define POSIX_FADV_NOREUSE	5 /* Data will be accessed once.  */
+ #endif
++
++#ifdef __USE_GNU
++#define F_LINUX_SPECIFIC_BASE	1024
++/* Request only one rt-signal per fd discipline
++ */
++#define F_SETAUXFL      (F_LINUX_SPECIFIC_BASE+3)
++#define F_GETAUXFL      (F_LINUX_SPECIFIC_BASE+4)
++
++/*
++ * Auxillary flags
++ */
++#define O_ONESIGFD      (2<<17)         /* Allow only one rt signal */
++                                        /* per fd in sigqueue       */
++#endif
++
